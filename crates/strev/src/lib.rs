@@ -1,3 +1,12 @@
+//! Event-driven messaging for Rust.
+//!
+//! strev provides a uniform publish/subscribe API across multiple transports, a
+//! [`Router`] that wires subscribers to handlers, composable [`Middleware`], and
+//! publisher/subscriber [`decorator`]s. Messages carry their acknowledgement state in
+//! the type system so each message is acked or nacked exactly once.
+//!
+//! Backends live in companion crates: `strev-channel`, `strev-redis`, `strev-nats`, and
+//! `strev-kafka`. CloudEvents enveloping lives in `strev-cloudevents`.
 pub mod decorator;
 mod error;
 mod handler;

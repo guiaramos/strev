@@ -1,3 +1,7 @@
+//! In-memory channel backend for strev.
+//!
+//! [`Channel`] implements both [`strev::Publisher`] and [`strev::Subscriber`] over
+//! in-process Tokio channels. Useful for tests and single-process pipelines.
 use std::sync::Arc;
 
 use async_trait::async_trait;
