@@ -12,7 +12,7 @@ mod throttle;
 mod timeout;
 
 pub use circuit_breaker::CircuitBreaker;
-pub use correlation_id::{correlation_id, set_correlation_id, CorrelationId};
+pub use correlation_id::{CorrelationId, correlation_id, set_correlation_id};
 pub use deduplicator::{DeduplicateRepository, Deduplicator, InMemoryDeduplicateRepository};
 pub use delay_on_error::DelayOnError;
 pub use duplicator::Duplicator;

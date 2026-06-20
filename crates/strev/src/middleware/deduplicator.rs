@@ -9,6 +9,8 @@ use crate::handler::{Handler, HandlerResult};
 use crate::message::{Message, Pending};
 use crate::middleware::Middleware;
 
+type KeyFactoryFn = Arc<dyn Fn(&Message<Pending>) -> String + Send + Sync>;
+
 #[async_trait]
 pub trait DeduplicateRepository: Send + Sync {
     async fn is_duplicate(&self, key: &str) -> bool;
@@ -46,7 +48,7 @@ impl DeduplicateRepository for InMemoryDeduplicateRepository {
 
 pub struct Deduplicator {
     pub repository: Arc<dyn DeduplicateRepository>,
-    pub key_factory: Option<Arc<dyn Fn(&Message<Pending>) -> String + Send + Sync>>,
+    pub key_factory: Option<KeyFactoryFn>,
 }
 
 impl Middleware for Deduplicator {
@@ -61,7 +63,7 @@ impl Middleware for Deduplicator {
 
 struct DeduplicatorHandler {
     repository: Arc<dyn DeduplicateRepository>,
-    key_factory: Option<Arc<dyn Fn(&Message<Pending>) -> String + Send + Sync>>,
+    key_factory: Option<KeyFactoryFn>,
     next: Box<dyn Handler>,
 }
 

@@ -14,7 +14,7 @@ fn publish_error_topic_not_found_display() {
 
 #[test]
 fn publish_error_backend_wraps_source() {
-    let source = std::io::Error::new(std::io::ErrorKind::Other, "connection lost");
+    let source = std::io::Error::other("connection lost");
     let err = PublishError::Backend(Box::new(source));
     assert_eq!(err.to_string(), "connection lost");
 }
@@ -27,7 +27,7 @@ fn subscribe_error_closed_display() {
 
 #[test]
 fn handler_error_wraps_source() {
-    let source = std::io::Error::new(std::io::ErrorKind::Other, "parse failed");
+    let source = std::io::Error::other("parse failed");
     let err = HandlerError::Processing(Box::new(source));
     assert_eq!(err.to_string(), "parse failed");
 }

@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -49,7 +49,9 @@ async fn main() {
 
     for i in 0..5 {
         let msg = Message::new(Bytes::from(format!("order-{i}")));
-        Publisher::publish(&publisher, &topic, vec![msg]).await.unwrap();
+        Publisher::publish(&publisher, &topic, vec![msg])
+            .await
+            .unwrap();
     }
 
     tokio::time::sleep(Duration::from_secs(2)).await;

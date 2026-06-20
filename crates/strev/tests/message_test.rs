@@ -54,7 +54,10 @@ struct TestEvent {
 
 #[test]
 fn message_deserialize_json() {
-    let event = TestEvent { name: "test".into(), count: 42 };
+    let event = TestEvent {
+        name: "test".into(),
+        count: 42,
+    };
     let payload = serde_json::to_vec(&event).unwrap();
     let msg = Message::new(Bytes::from(payload));
     let decoded: TestEvent = msg.deserialize().unwrap();

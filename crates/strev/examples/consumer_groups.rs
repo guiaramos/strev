@@ -1,12 +1,10 @@
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
-use strev::{
-    HandlerError, HandlerResult, Message, Publisher, Router, ShutdownSignal, Topic,
-};
+use strev::{HandlerError, HandlerResult, Message, Publisher, Router, ShutdownSignal, Topic};
 use strev_channel::Channel;
 use tokio_util::sync::CancellationToken;
 
@@ -101,16 +99,32 @@ async fn main() {
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     let users = vec![
-        UserSignedUp { user_id: 1, email: "alice@example.com".into(), name: "Alice".into() },
-        UserSignedUp { user_id: 2, email: "bob@example.com".into(), name: "Bob".into() },
-        UserSignedUp { user_id: 3, email: "carol@example.com".into(), name: "Carol".into() },
+        UserSignedUp {
+            user_id: 1,
+            email: "alice@example.com".into(),
+            name: "Alice".into(),
+        },
+        UserSignedUp {
+            user_id: 2,
+            email: "bob@example.com".into(),
+            name: "Bob".into(),
+        },
+        UserSignedUp {
+            user_id: 3,
+            email: "carol@example.com".into(),
+            name: "Carol".into(),
+        },
     ];
 
     for user in &users {
         let payload = serde_json::to_vec(user).unwrap();
-        Publisher::publish(&channel, &signups_topic, vec![Message::new(Bytes::from(payload))])
-            .await
-            .unwrap();
+        Publisher::publish(
+            &channel,
+            &signups_topic,
+            vec![Message::new(Bytes::from(payload))],
+        )
+        .await
+        .unwrap();
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
 
@@ -121,5 +135,8 @@ async fn main() {
     println!("\n--- Summary ---");
     println!("emails sent: {}", emails_sent.load(Ordering::SeqCst));
     println!("crm updated: {}", crm_updated.load(Ordering::SeqCst));
-    println!("analytics tracked: {}", analytics_tracked.load(Ordering::SeqCst));
+    println!(
+        "analytics tracked: {}",
+        analytics_tracked.load(Ordering::SeqCst)
+    );
 }

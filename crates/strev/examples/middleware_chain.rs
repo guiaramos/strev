@@ -1,15 +1,11 @@
 use std::num::NonZeroU32;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 use bytes::Bytes;
-use strev::middleware::{
-    CircuitBreaker, CorrelationId, Retry, Throttle, Timeout,
-};
-use strev::{
-    HandlerError, HandlerResult, Message, Publisher, Router, ShutdownSignal, Topic,
-};
+use strev::middleware::{CircuitBreaker, CorrelationId, Retry, Throttle, Timeout};
+use strev::{HandlerError, HandlerResult, Message, Publisher, Router, ShutdownSignal, Topic};
 use strev_channel::Channel;
 use tokio_util::sync::CancellationToken;
 
@@ -52,7 +48,7 @@ async fn main() {
                         .unwrap_or("none")
                         .to_string();
 
-                    if n % 3 == 0 {
+                    if n.is_multiple_of(3) {
                         println!("[{cid}] FAIL: {payload} (attempt {n})");
                         let _ = msg.nack();
                         return Err(HandlerError::Processing("transient failure".into()));
@@ -83,7 +79,9 @@ async fn main() {
 
     for i in 0..8 {
         let msg = Message::new(Bytes::from(format!("order-{i}")));
-        Publisher::publish(&channel, &topic, vec![msg]).await.unwrap();
+        Publisher::publish(&channel, &topic, vec![msg])
+            .await
+            .unwrap();
         tokio::time::sleep(Duration::from_millis(30)).await;
     }
 
