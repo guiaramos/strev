@@ -4,8 +4,8 @@ use std::time::Duration;
 use bytes::Bytes;
 use strev::middleware::{correlation_id, set_correlation_id};
 use strev::{
-    bulk_read, passthrough, HandlerResult, Message, Publisher, Router, ShutdownSignal, Subscriber,
-    Topic,
+    HandlerResult, Message, Publisher, Router, ShutdownSignal, Subscriber, Topic, bulk_read,
+    passthrough,
 };
 use strev_channel::Channel;
 use tokio_stream::StreamExt;
@@ -63,7 +63,9 @@ async fn bulk_read_collects_messages() {
 
     for i in 0..5 {
         let msg = Message::new(Bytes::from(format!("msg-{i}")));
-        Publisher::publish(&channel, &topic, vec![msg]).await.unwrap();
+        Publisher::publish(&channel, &topic, vec![msg])
+            .await
+            .unwrap();
     }
 
     let messages = bulk_read(&mut stream, 10, Duration::from_millis(200)).await;
@@ -82,7 +84,9 @@ async fn bulk_read_respects_limit() {
 
     for i in 0..10 {
         let msg = Message::new(Bytes::from(format!("msg-{i}")));
-        Publisher::publish(&channel, &topic, vec![msg]).await.unwrap();
+        Publisher::publish(&channel, &topic, vec![msg])
+            .await
+            .unwrap();
     }
 
     let messages = bulk_read(&mut stream, 3, Duration::from_millis(200)).await;
@@ -100,7 +104,9 @@ async fn bulk_read_respects_timeout() {
     let mut stream = Subscriber::subscribe(&channel, &topic).await.unwrap();
 
     let msg = Message::new(Bytes::from("only-one"));
-    Publisher::publish(&channel, &topic, vec![msg]).await.unwrap();
+    Publisher::publish(&channel, &topic, vec![msg])
+        .await
+        .unwrap();
 
     let start = std::time::Instant::now();
     let messages = bulk_read(&mut stream, 10, Duration::from_millis(100)).await;
@@ -125,13 +131,19 @@ fn router_handler_names() {
     let channel = Channel::new(16);
     let mut router = Router::new();
 
-    router.add_consumer("handler_a", Topic::new("a"), channel.clone(), |msg: Message| async move {
-        Ok(HandlerResult::ack(msg))
-    });
+    router.add_consumer(
+        "handler_a",
+        Topic::new("a"),
+        channel.clone(),
+        |msg: Message| async move { Ok(HandlerResult::ack(msg)) },
+    );
 
-    router.add_consumer("handler_b", Topic::new("b"), channel.clone(), |msg: Message| async move {
-        Ok(HandlerResult::ack(msg))
-    });
+    router.add_consumer(
+        "handler_b",
+        Topic::new("b"),
+        channel.clone(),
+        |msg: Message| async move { Ok(HandlerResult::ack(msg)) },
+    );
 
     let names = router.handler_names();
     assert_eq!(names, vec!["handler_a", "handler_b"]);
@@ -143,13 +155,19 @@ fn router_rejects_duplicate_handler_names() {
     let channel = Channel::new(16);
     let mut router = Router::new();
 
-    router.add_consumer("same_name", Topic::new("a"), channel.clone(), |msg: Message| async move {
-        Ok(HandlerResult::ack(msg))
-    });
+    router.add_consumer(
+        "same_name",
+        Topic::new("a"),
+        channel.clone(),
+        |msg: Message| async move { Ok(HandlerResult::ack(msg)) },
+    );
 
-    router.add_consumer("same_name", Topic::new("b"), channel.clone(), |msg: Message| async move {
-        Ok(HandlerResult::ack(msg))
-    });
+    router.add_consumer(
+        "same_name",
+        Topic::new("b"),
+        channel.clone(),
+        |msg: Message| async move { Ok(HandlerResult::ack(msg)) },
+    );
 }
 
 #[tokio::test]
@@ -183,7 +201,9 @@ async fn router_with_publisher_decorator() {
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     let msg = Message::new(Bytes::from("test"));
-    Publisher::publish(&channel, &topic_in, vec![msg]).await.unwrap();
+    Publisher::publish(&channel, &topic_in, vec![msg])
+        .await
+        .unwrap();
 
     let received = tokio::time::timeout(Duration::from_millis(500), output.next())
         .await

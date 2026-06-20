@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use bytes::Bytes;
 use strev::{Handler, HandlerError, HandlerResult, Message, Middleware};
@@ -35,7 +35,9 @@ async fn noop_handler(msg: Message) -> Result<HandlerResult, HandlerError> {
 #[tokio::test]
 async fn middleware_wraps_handler() {
     let count = Arc::new(AtomicU32::new(0));
-    let mw = CountingMiddleware { count: count.clone() };
+    let mw = CountingMiddleware {
+        count: count.clone(),
+    };
 
     let handler: Box<dyn Handler> = Box::new(noop_handler as fn(Message) -> _);
     let wrapped = mw.wrap(handler);
@@ -52,18 +54,30 @@ async fn middleware_chain_executes_in_order() {
 
     let mw_a = {
         let log = log.clone();
-        ClosureMiddleware(Arc::new(move |next: Box<dyn Handler>| -> Box<dyn Handler> {
-            let log = log.clone();
-            Box::new(LogHandler { label: "A".into(), log, next })
-        }))
+        ClosureMiddleware(Arc::new(
+            move |next: Box<dyn Handler>| -> Box<dyn Handler> {
+                let log = log.clone();
+                Box::new(LogHandler {
+                    label: "A".into(),
+                    log,
+                    next,
+                })
+            },
+        ))
     };
 
     let mw_b = {
         let log = log.clone();
-        ClosureMiddleware(Arc::new(move |next: Box<dyn Handler>| -> Box<dyn Handler> {
-            let log = log.clone();
-            Box::new(LogHandler { label: "B".into(), log, next })
-        }))
+        ClosureMiddleware(Arc::new(
+            move |next: Box<dyn Handler>| -> Box<dyn Handler> {
+                let log = log.clone();
+                Box::new(LogHandler {
+                    label: "B".into(),
+                    log,
+                    next,
+                })
+            },
+        ))
     };
 
     let handler: Box<dyn Handler> = Box::new(noop_handler as fn(Message) -> _);
@@ -76,7 +90,9 @@ async fn middleware_chain_executes_in_order() {
     assert_eq!(&*entries, &["A", "B"]);
 }
 
-struct ClosureMiddleware(Arc<dyn Fn(Box<dyn Handler>) -> Box<dyn Handler> + Send + Sync>);
+type WrapFn = Arc<dyn Fn(Box<dyn Handler>) -> Box<dyn Handler> + Send + Sync>;
+
+struct ClosureMiddleware(WrapFn);
 
 impl Middleware for ClosureMiddleware {
     fn wrap(&self, next: Box<dyn Handler>) -> Box<dyn Handler> {

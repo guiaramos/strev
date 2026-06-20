@@ -11,7 +11,9 @@ async fn publish_and_subscribe_single_message() {
     let mut stream = Subscriber::subscribe(&channel, &topic).await.unwrap();
 
     let msg = Message::new(Bytes::from("hello"));
-    let outcomes = Publisher::publish(&channel, &topic, vec![msg]).await.unwrap();
+    let outcomes = Publisher::publish(&channel, &topic, vec![msg])
+        .await
+        .unwrap();
     assert!(outcomes.iter().all(|o| o.is_acked()));
 
     let received = stream.next().await.unwrap();
@@ -31,7 +33,9 @@ async fn publish_multiple_messages() {
         Message::new(Bytes::from("b")),
         Message::new(Bytes::from("c")),
     ];
-    let outcomes = Publisher::publish(&channel, &topic, messages).await.unwrap();
+    let outcomes = Publisher::publish(&channel, &topic, messages)
+        .await
+        .unwrap();
     assert_eq!(outcomes.len(), 3);
 
     for expected in [b"a", b"b", b"c"] {
@@ -50,7 +54,9 @@ async fn multiple_subscribers_receive_copies() {
     let mut stream_b = Subscriber::subscribe(&channel, &topic).await.unwrap();
 
     let msg = Message::new(Bytes::from("fanout"));
-    Publisher::publish(&channel, &topic, vec![msg]).await.unwrap();
+    Publisher::publish(&channel, &topic, vec![msg])
+        .await
+        .unwrap();
 
     let a = stream_a.next().await.unwrap();
     let b = stream_b.next().await.unwrap();
@@ -81,7 +87,9 @@ async fn channel_clone_shares_state() {
     let mut stream = Subscriber::subscribe(&channel, &topic).await.unwrap();
 
     let msg = Message::new(Bytes::from("from_clone"));
-    Publisher::publish(&channel2, &topic, vec![msg]).await.unwrap();
+    Publisher::publish(&channel2, &topic, vec![msg])
+        .await
+        .unwrap();
 
     let received = stream.next().await.unwrap();
     assert_eq!(received.payload().as_ref(), b"from_clone");

@@ -1,11 +1,9 @@
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 use bytes::Bytes;
-use strev::{
-    HandlerResult, Message, Publisher, Router, ShutdownSignal, Topic,
-};
+use strev::{HandlerResult, Message, Publisher, Router, ShutdownSignal, Topic};
 use strev_channel::Channel;
 use tokio_util::sync::CancellationToken;
 
@@ -35,14 +33,15 @@ async fn router_processes_messages_end_to_end() {
     let token = CancellationToken::new();
     let token_clone = token.clone();
 
-    let router_handle = tokio::spawn(async move {
-        router.run(ShutdownSignal::Token(token_clone)).await
-    });
+    let router_handle =
+        tokio::spawn(async move { router.run(ShutdownSignal::Token(token_clone)).await });
 
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     let msg = Message::new(Bytes::from("test"));
-    Publisher::publish(&channel, &topic_in, vec![msg]).await.unwrap();
+    Publisher::publish(&channel, &topic_in, vec![msg])
+        .await
+        .unwrap();
 
     tokio::time::sleep(Duration::from_millis(100)).await;
     token.cancel();
@@ -76,15 +75,16 @@ async fn router_consumer_without_publisher() {
     let token = CancellationToken::new();
     let token_clone = token.clone();
 
-    let router_handle = tokio::spawn(async move {
-        router.run(ShutdownSignal::Token(token_clone)).await
-    });
+    let router_handle =
+        tokio::spawn(async move { router.run(ShutdownSignal::Token(token_clone)).await });
 
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     for i in 0..5 {
         let msg = Message::new(Bytes::from(format!("msg-{i}")));
-        Publisher::publish(&channel, &topic, vec![msg]).await.unwrap();
+        Publisher::publish(&channel, &topic, vec![msg])
+            .await
+            .unwrap();
     }
 
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -100,21 +100,14 @@ async fn router_shutdown_via_cancellation_token() {
     let topic = Topic::new("test");
 
     let mut router = Router::new();
-    router.add_consumer(
-        "noop",
-        topic,
-        channel.clone(),
-        |msg: Message| async move {
-            Ok(HandlerResult::ack(msg))
-        },
-    );
+    router.add_consumer("noop", topic, channel.clone(), |msg: Message| async move {
+        Ok(HandlerResult::ack(msg))
+    });
 
     let token = CancellationToken::new();
     let token_clone = token.clone();
 
-    let handle = tokio::spawn(async move {
-        router.run(ShutdownSignal::Token(token_clone)).await
-    });
+    let handle = tokio::spawn(async move { router.run(ShutdownSignal::Token(token_clone)).await });
 
     tokio::time::sleep(Duration::from_millis(50)).await;
     token.cancel();

@@ -1,6 +1,6 @@
 use std::num::NonZeroU32;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -104,16 +104,27 @@ async fn pipeline_order_placed_to_confirmed_to_notification() {
     let token = CancellationToken::new();
     let token_clone = token.clone();
 
-    let router_handle = tokio::spawn(async move {
-        router.run(ShutdownSignal::Token(token_clone)).await
-    });
+    let router_handle =
+        tokio::spawn(async move { router.run(ShutdownSignal::Token(token_clone)).await });
 
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     let orders = vec![
-        Order { id: 1, item: "widget".into(), quantity: 5 },
-        Order { id: 2, item: "gadget".into(), quantity: 3 },
-        Order { id: 3, item: "doohickey".into(), quantity: 1 },
+        Order {
+            id: 1,
+            item: "widget".into(),
+            quantity: 5,
+        },
+        Order {
+            id: 2,
+            item: "gadget".into(),
+            quantity: 3,
+        },
+        Order {
+            id: 3,
+            item: "doohickey".into(),
+            quantity: 1,
+        },
     ];
 
     for order in &orders {
@@ -185,9 +196,8 @@ async fn middleware_chain_applies_to_handler() {
     let token = CancellationToken::new();
     let token_clone = token.clone();
 
-    let router_handle = tokio::spawn(async move {
-        router.run(ShutdownSignal::Token(token_clone)).await
-    });
+    let router_handle =
+        tokio::spawn(async move { router.run(ShutdownSignal::Token(token_clone)).await });
 
     tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -236,9 +246,8 @@ async fn handler_nack_does_not_produce_messages() {
     let token = CancellationToken::new();
     let token_clone = token.clone();
 
-    let router_handle = tokio::spawn(async move {
-        router.run(ShutdownSignal::Token(token_clone)).await
-    });
+    let router_handle =
+        tokio::spawn(async move { router.run(ShutdownSignal::Token(token_clone)).await });
 
     tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -299,9 +308,8 @@ async fn retry_middleware_recovers_transient_failure() {
     let token = CancellationToken::new();
     let token_clone = token.clone();
 
-    let router_handle = tokio::spawn(async move {
-        router.run(ShutdownSignal::Token(token_clone)).await
-    });
+    let router_handle =
+        tokio::spawn(async move { router.run(ShutdownSignal::Token(token_clone)).await });
 
     tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -331,35 +339,46 @@ async fn multiple_consumers_on_same_topic_both_receive() {
     let mut router = Router::new();
 
     let a = consumer_a.clone();
-    router.add_consumer("consumer_a", topic.clone(), channel.clone(), move |msg: Message| {
-        let a = a.clone();
-        async move {
-            a.fetch_add(1, Ordering::SeqCst);
-            Ok(HandlerResult::ack(msg))
-        }
-    });
+    router.add_consumer(
+        "consumer_a",
+        topic.clone(),
+        channel.clone(),
+        move |msg: Message| {
+            let a = a.clone();
+            async move {
+                a.fetch_add(1, Ordering::SeqCst);
+                Ok(HandlerResult::ack(msg))
+            }
+        },
+    );
 
     let b = consumer_b.clone();
-    router.add_consumer("consumer_b", topic.clone(), channel.clone(), move |msg: Message| {
-        let b = b.clone();
-        async move {
-            b.fetch_add(1, Ordering::SeqCst);
-            Ok(HandlerResult::ack(msg))
-        }
-    });
+    router.add_consumer(
+        "consumer_b",
+        topic.clone(),
+        channel.clone(),
+        move |msg: Message| {
+            let b = b.clone();
+            async move {
+                b.fetch_add(1, Ordering::SeqCst);
+                Ok(HandlerResult::ack(msg))
+            }
+        },
+    );
 
     let token = CancellationToken::new();
     let token_clone = token.clone();
 
-    let router_handle = tokio::spawn(async move {
-        router.run(ShutdownSignal::Token(token_clone)).await
-    });
+    let router_handle =
+        tokio::spawn(async move { router.run(ShutdownSignal::Token(token_clone)).await });
 
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     for i in 0..3 {
         let msg = Message::new(Bytes::from(format!("event-{i}")));
-        Publisher::publish(&channel, &topic, vec![msg]).await.unwrap();
+        Publisher::publish(&channel, &topic, vec![msg])
+            .await
+            .unwrap();
     }
 
     tokio::time::sleep(Duration::from_millis(300)).await;
@@ -380,31 +399,37 @@ async fn handler_error_does_not_crash_router() {
     let mut router = Router::new();
 
     let p = processed.clone();
-    router.add_consumer("mixed_handler", topic.clone(), channel.clone(), move |msg: Message| {
-        let p = p.clone();
-        async move {
-            let payload = String::from_utf8_lossy(msg.payload()).to_string();
-            if payload == "bad" {
-                let _ = msg.nack();
-                return Err(HandlerError::Processing("bad message".into()));
+    router.add_consumer(
+        "mixed_handler",
+        topic.clone(),
+        channel.clone(),
+        move |msg: Message| {
+            let p = p.clone();
+            async move {
+                let payload = String::from_utf8_lossy(msg.payload()).to_string();
+                if payload == "bad" {
+                    let _ = msg.nack();
+                    return Err(HandlerError::Processing("bad message".into()));
+                }
+                p.lock().await.push(payload);
+                Ok(HandlerResult::ack(msg))
             }
-            p.lock().await.push(payload);
-            Ok(HandlerResult::ack(msg))
-        }
-    });
+        },
+    );
 
     let token = CancellationToken::new();
     let token_clone = token.clone();
 
-    let router_handle = tokio::spawn(async move {
-        router.run(ShutdownSignal::Token(token_clone)).await
-    });
+    let router_handle =
+        tokio::spawn(async move { router.run(ShutdownSignal::Token(token_clone)).await });
 
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     for payload in ["good_1", "bad", "good_2"] {
         let msg = Message::new(Bytes::from(payload));
-        Publisher::publish(&channel, &topic, vec![msg]).await.unwrap();
+        Publisher::publish(&channel, &topic, vec![msg])
+            .await
+            .unwrap();
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
 

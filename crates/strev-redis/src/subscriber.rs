@@ -107,20 +107,19 @@ impl strev::Subscriber for RedisSubscriber {
                 };
 
                 for (entry_id, fields) in entries {
-                    let (payload, mut metadata) =
-                        match config.marshaller.unmarshal(&fields) {
-                            Some(v) => v,
-                            None => {
-                                tracing::warn!(entry_id = %entry_id, "failed to unmarshal");
-                                let _: Result<(), _> = redis::cmd("XACK")
-                                    .arg(&stream_key)
-                                    .arg(group)
-                                    .arg(&entry_id)
-                                    .query_async(&mut conn)
-                                    .await;
-                                continue;
-                            }
-                        };
+                    let (payload, mut metadata) = match config.marshaller.unmarshal(&fields) {
+                        Some(v) => v,
+                        None => {
+                            tracing::warn!(entry_id = %entry_id, "failed to unmarshal");
+                            let _: Result<(), _> = redis::cmd("XACK")
+                                .arg(&stream_key)
+                                .arg(group)
+                                .arg(&entry_id)
+                                .query_async(&mut conn)
+                                .await;
+                            continue;
+                        }
+                    };
 
                     metadata.set("redis_stream_id", entry_id.clone());
 
