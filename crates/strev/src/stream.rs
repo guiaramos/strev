@@ -15,7 +15,12 @@ pub struct MessageStream {
 impl MessageStream {
     pub fn channel(buffer: usize) -> (mpsc::Sender<Message<Pending>>, Self) {
         let (tx, rx) = mpsc::channel(buffer);
-        (tx, Self { inner: ReceiverStream::new(rx) })
+        (
+            tx,
+            Self {
+                inner: ReceiverStream::new(rx),
+            },
+        )
     }
 }
 

@@ -4,9 +4,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use strev::middleware::PoisonQueue;
-use strev::{
-    HandlerError, HandlerResult, Message, Publisher, Router, ShutdownSignal, Topic,
-};
+use strev::{HandlerError, HandlerResult, Message, Publisher, Router, ShutdownSignal, Topic};
 use strev_channel::Channel;
 use tokio_util::sync::CancellationToken;
 
@@ -45,7 +43,11 @@ async fn main() {
             if payment.amount > 10000.0 {
                 let _ = msg.nack();
                 return Err(HandlerError::Processing(
-                    format!("payment {} exceeds limit: ${:.2}", payment.id, payment.amount).into(),
+                    format!(
+                        "payment {} exceeds limit: ${:.2}",
+                        payment.id, payment.amount
+                    )
+                    .into(),
                 ));
             }
 
@@ -59,7 +61,11 @@ async fn main() {
         dead_letter_topic,
         channel.clone(),
         |msg: Message| async move {
-            let error = msg.metadata().get("poison_error").unwrap_or("unknown").to_string();
+            let error = msg
+                .metadata()
+                .get("poison_error")
+                .unwrap_or("unknown")
+                .to_string();
             let payload = String::from_utf8_lossy(msg.payload());
             println!("DEAD LETTER: error={error}, payload={payload}");
             Ok(HandlerResult::ack(msg))
@@ -73,17 +79,33 @@ async fn main() {
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     let payments = vec![
-        Payment { id: 1, amount: 50.0 },
-        Payment { id: 2, amount: 99999.0 },
-        Payment { id: 3, amount: 25.0 },
-        Payment { id: 4, amount: 50000.0 },
+        Payment {
+            id: 1,
+            amount: 50.0,
+        },
+        Payment {
+            id: 2,
+            amount: 99999.0,
+        },
+        Payment {
+            id: 3,
+            amount: 25.0,
+        },
+        Payment {
+            id: 4,
+            amount: 50000.0,
+        },
     ];
 
     for payment in &payments {
         let payload = serde_json::to_vec(payment).unwrap();
-        Publisher::publish(&channel, &payments_topic, vec![Message::new(Bytes::from(payload))])
-            .await
-            .unwrap();
+        Publisher::publish(
+            &channel,
+            &payments_topic,
+            vec![Message::new(Bytes::from(payload))],
+        )
+        .await
+        .unwrap();
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
 

@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -52,7 +52,11 @@ async fn main() {
                 };
 
                 let new_count = counter.fetch_add(1, Ordering::SeqCst) + 1;
-                println!("post #{new_count}: \"{title}\" by {author}", title = post.title, author = post.author);
+                println!(
+                    "post #{new_count}: \"{title}\" by {author}",
+                    title = post.title,
+                    author = post.author
+                );
 
                 let payload = serde_json::to_vec(&PostsCountUpdated { new_count }).unwrap();
                 Ok(HandlerResult::ack_with(
@@ -80,7 +84,11 @@ async fn main() {
                 }
             };
 
-            println!("feed: \"{title}\" by {author}", title = post.title, author = post.author);
+            println!(
+                "feed: \"{title}\" by {author}",
+                title = post.title,
+                author = post.author
+            );
             Ok(HandlerResult::ack(msg))
         },
     );
@@ -112,9 +120,18 @@ async fn main() {
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     let posts = vec![
-        PostAdded { author: "alice".into(), title: "Getting Started with Rust".into() },
-        PostAdded { author: "bob".into(), title: "Async Patterns in Tokio".into() },
-        PostAdded { author: "carol".into(), title: "Event-Driven Architecture".into() },
+        PostAdded {
+            author: "alice".into(),
+            title: "Getting Started with Rust".into(),
+        },
+        PostAdded {
+            author: "bob".into(),
+            title: "Async Patterns in Tokio".into(),
+        },
+        PostAdded {
+            author: "carol".into(),
+            title: "Event-Driven Architecture".into(),
+        },
     ];
 
     for post in &posts {
@@ -130,5 +147,8 @@ async fn main() {
     token.cancel();
     router_handle.await.unwrap().unwrap();
 
-    println!("pipeline shut down, total posts processed: {}", counter.load(Ordering::SeqCst));
+    println!(
+        "pipeline shut down, total posts processed: {}",
+        counter.load(Ordering::SeqCst)
+    );
 }

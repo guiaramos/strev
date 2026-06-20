@@ -132,7 +132,10 @@ impl Router {
             publisher: Some(Box::new(publisher)),
             middlewares: Vec::new(),
         });
-        HandlerBuilder { router: self, index }
+        HandlerBuilder {
+            router: self,
+            index,
+        }
     }
 
     pub fn add_consumer(
@@ -153,7 +156,10 @@ impl Router {
             publisher: None,
             middlewares: Vec::new(),
         });
-        HandlerBuilder { router: self, index }
+        HandlerBuilder {
+            router: self,
+            index,
+        }
     }
 
     pub async fn run(self, shutdown: ShutdownSignal) -> Result<(), RouterError> {
@@ -274,7 +280,10 @@ impl Router {
                         by_topic
                             .entry(&pm.topic)
                             .or_default()
-                            .push(Message::with_metadata(pm.payload.clone(), pm.metadata.clone()));
+                            .push(Message::with_metadata(
+                                pm.payload.clone(),
+                                pm.metadata.clone(),
+                            ));
                     }
 
                     for (topic, messages) in by_topic {

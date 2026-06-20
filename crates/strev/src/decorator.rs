@@ -11,6 +11,8 @@ use crate::stream::MessageStream;
 use crate::subscriber::Subscriber;
 use crate::topic::Topic;
 
+type MessageTransformFn = Arc<dyn Fn(&mut Message<Pending>) + Send + Sync>;
+
 pub trait PublisherDecorator: Send + Sync {
     fn decorate(&self, publisher: Box<dyn Publisher>) -> Box<dyn Publisher>;
 }
@@ -20,7 +22,7 @@ pub trait SubscriberDecorator: Send + Sync {
 }
 
 pub struct MessageTransformPublisherDecorator {
-    pub transform: Arc<dyn Fn(&mut Message<Pending>) + Send + Sync>,
+    pub transform: MessageTransformFn,
 }
 
 impl PublisherDecorator for MessageTransformPublisherDecorator {
@@ -34,7 +36,7 @@ impl PublisherDecorator for MessageTransformPublisherDecorator {
 
 struct TransformedPublisher {
     inner: Box<dyn Publisher>,
-    transform: Arc<dyn Fn(&mut Message<Pending>) + Send + Sync>,
+    transform: MessageTransformFn,
 }
 
 #[async_trait]
@@ -60,7 +62,7 @@ impl Publisher for TransformedPublisher {
 }
 
 pub struct MessageTransformSubscriberDecorator {
-    pub transform: Arc<dyn Fn(&mut Message<Pending>) + Send + Sync>,
+    pub transform: MessageTransformFn,
 }
 
 impl SubscriberDecorator for MessageTransformSubscriberDecorator {
@@ -74,7 +76,7 @@ impl SubscriberDecorator for MessageTransformSubscriberDecorator {
 
 struct TransformedSubscriber {
     inner: Box<dyn Subscriber>,
-    transform: Arc<dyn Fn(&mut Message<Pending>) + Send + Sync>,
+    transform: MessageTransformFn,
 }
 
 #[async_trait]

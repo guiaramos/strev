@@ -18,13 +18,13 @@ pub use decorator::{
 pub use error::{
     CloseError, DeserializeError, HandlerError, PublishError, RouterError, SubscribeError,
 };
-pub use handler::{passthrough, Handler, HandlerResult, ProducedMessage};
+pub use handler::{Handler, HandlerResult, ProducedMessage, passthrough};
 pub use message::{AckState, Acked, Message, Nacked, Pending};
 pub use metadata::Metadata;
 pub use middleware::Middleware;
 pub use outcome::Outcome;
 pub use publisher::Publisher;
 pub use router::{HandlerBuilder, Router, RouterConfig, ShutdownSignal};
-pub use stream::{bulk_read, MessageStream};
+pub use stream::{MessageStream, bulk_read};
 pub use subscriber::Subscriber;
 pub use topic::Topic;

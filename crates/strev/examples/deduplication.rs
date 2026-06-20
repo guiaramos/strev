@@ -1,13 +1,11 @@
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use strev::middleware::{Deduplicator, InMemoryDeduplicateRepository};
-use strev::{
-    HandlerError, HandlerResult, Message, Publisher, Router, ShutdownSignal, Topic,
-};
+use strev::{HandlerError, HandlerResult, Message, Publisher, Router, ShutdownSignal, Topic};
 use strev_channel::Channel;
 use tokio_util::sync::CancellationToken;
 
@@ -63,11 +61,26 @@ async fn main() {
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     let events = vec![
-        OrderEvent { order_id: "ORD-001".into(), action: "created".into() },
-        OrderEvent { order_id: "ORD-001".into(), action: "created".into() },
-        OrderEvent { order_id: "ORD-002".into(), action: "created".into() },
-        OrderEvent { order_id: "ORD-001".into(), action: "created".into() },
-        OrderEvent { order_id: "ORD-003".into(), action: "created".into() },
+        OrderEvent {
+            order_id: "ORD-001".into(),
+            action: "created".into(),
+        },
+        OrderEvent {
+            order_id: "ORD-001".into(),
+            action: "created".into(),
+        },
+        OrderEvent {
+            order_id: "ORD-002".into(),
+            action: "created".into(),
+        },
+        OrderEvent {
+            order_id: "ORD-001".into(),
+            action: "created".into(),
+        },
+        OrderEvent {
+            order_id: "ORD-003".into(),
+            action: "created".into(),
+        },
     ];
 
     println!("publishing {} messages (with duplicates)...", events.len());

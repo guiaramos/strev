@@ -76,11 +76,7 @@ impl Publisher for Channel {
 impl Subscriber for Channel {
     async fn subscribe(&self, topic: &Topic) -> Result<MessageStream, SubscribeError> {
         let (tx, stream) = MessageStream::channel(self.inner.buffer_size);
-        self.inner
-            .topics
-            .entry(topic.clone())
-            .or_default()
-            .push(tx);
+        self.inner.topics.entry(topic.clone()).or_default().push(tx);
         Ok(stream)
     }
 

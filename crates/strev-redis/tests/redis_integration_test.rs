@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -118,7 +118,9 @@ async fn metadata_roundtrip() {
     msg.metadata_mut().set("source", "test");
     msg.metadata_mut().set("version", "1.0");
 
-    Publisher::publish(&publisher, &topic, vec![msg]).await.unwrap();
+    Publisher::publish(&publisher, &topic, vec![msg])
+        .await
+        .unwrap();
 
     let received = tokio::time::timeout(Duration::from_secs(5), stream.next())
         .await
@@ -172,7 +174,9 @@ async fn router_with_redis() {
 
     for i in 0..3 {
         let msg = Message::new(Bytes::from(format!("router-msg-{i}")));
-        Publisher::publish(&publisher, &topic, vec![msg]).await.unwrap();
+        Publisher::publish(&publisher, &topic, vec![msg])
+            .await
+            .unwrap();
     }
 
     tokio::time::sleep(Duration::from_secs(3)).await;
