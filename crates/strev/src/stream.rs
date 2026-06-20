@@ -1,9 +1,10 @@
 use std::pin::Pin;
 use std::task::{Context, Poll};
+use std::time::Duration;
 
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use tokio_stream::Stream;
+use tokio_stream::{Stream, StreamExt};
 
 use crate::message::{Message, Pending};
 
@@ -28,4 +29,31 @@ impl Stream for MessageStream {
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.inner.size_hint()
     }
+}
+
+pub async fn bulk_read(
+    stream: &mut MessageStream,
+    limit: usize,
+    timeout: Duration,
+) -> Vec<Message<Pending>> {
+    let mut messages = Vec::with_capacity(limit);
+    let deadline = tokio::time::sleep(timeout);
+    tokio::pin!(deadline);
+
+    loop {
+        if messages.len() >= limit {
+            break;
+        }
+        tokio::select! {
+            _ = &mut deadline => break,
+            msg = stream.next() => {
+                match msg {
+                    Some(m) => messages.push(m),
+                    None => break,
+                }
+            }
+        }
+    }
+
+    messages
 }

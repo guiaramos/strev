@@ -1,8 +1,11 @@
+use std::time::Duration;
+
 use tokio::select;
 use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
 use tracing::error;
 
+use crate::decorator::{PublisherDecorator, SubscriberDecorator};
 use crate::error::RouterError;
 use crate::handler::Handler;
 use crate::message::{Message, Pending};
@@ -16,9 +19,24 @@ pub enum ShutdownSignal {
     CtrlC,
 }
 
+pub struct RouterConfig {
+    pub close_timeout: Duration,
+}
+
+impl Default for RouterConfig {
+    fn default() -> Self {
+        Self {
+            close_timeout: Duration::from_secs(30),
+        }
+    }
+}
+
 pub struct Router {
+    config: RouterConfig,
     handlers: Vec<HandlerRegistration>,
     middlewares: Vec<Box<dyn Middleware>>,
+    publisher_decorators: Vec<Box<dyn PublisherDecorator>>,
+    subscriber_decorators: Vec<Box<dyn SubscriberDecorator>>,
 }
 
 struct HandlerRegistration {
@@ -46,9 +64,16 @@ impl<'r> HandlerBuilder<'r> {
 
 impl Router {
     pub fn new() -> Self {
+        Self::with_config(RouterConfig::default())
+    }
+
+    pub fn with_config(config: RouterConfig) -> Self {
         Self {
+            config,
             handlers: Vec::new(),
             middlewares: Vec::new(),
+            publisher_decorators: Vec::new(),
+            subscriber_decorators: Vec::new(),
         }
     }
 
@@ -56,9 +81,36 @@ impl Router {
         self.handlers.is_empty()
     }
 
+    pub fn handler_names(&self) -> Vec<&str> {
+        self.handlers.iter().map(|h| h.name.as_str()).collect()
+    }
+
     pub fn add_middleware(&mut self, middleware: impl Middleware + 'static) -> &mut Self {
         self.middlewares.push(Box::new(middleware));
         self
+    }
+
+    pub fn add_publisher_decorator(
+        &mut self,
+        decorator: impl PublisherDecorator + 'static,
+    ) -> &mut Self {
+        self.publisher_decorators.push(Box::new(decorator));
+        self
+    }
+
+    pub fn add_subscriber_decorator(
+        &mut self,
+        decorator: impl SubscriberDecorator + 'static,
+    ) -> &mut Self {
+        self.subscriber_decorators.push(Box::new(decorator));
+        self
+    }
+
+    fn assert_unique_name(&self, name: &str) {
+        assert!(
+            !self.handlers.iter().any(|h| h.name == name),
+            "duplicate handler name: {name}"
+        );
     }
 
     pub fn add_handler(
@@ -69,9 +121,11 @@ impl Router {
         publisher: impl Publisher + 'static,
         handler: impl Handler + 'static,
     ) -> HandlerBuilder<'_> {
+        let name = name.into();
+        self.assert_unique_name(&name);
         let index = self.handlers.len();
         self.handlers.push(HandlerRegistration {
-            name: name.into(),
+            name,
             subscribe_topic,
             handler: Box::new(handler),
             subscriber: Box::new(subscriber),
@@ -88,9 +142,11 @@ impl Router {
         subscriber: impl Subscriber + 'static,
         handler: impl Handler + 'static,
     ) -> HandlerBuilder<'_> {
+        let name = name.into();
+        self.assert_unique_name(&name);
         let index = self.handlers.len();
         self.handlers.push(HandlerRegistration {
-            name: name.into(),
+            name,
             subscribe_topic,
             handler: Box::new(handler),
             subscriber: Box::new(subscriber),
@@ -114,10 +170,27 @@ impl Router {
             }
         };
 
-        let Self { handlers, middlewares } = self;
+        let Self {
+            config,
+            handlers,
+            middlewares,
+            publisher_decorators,
+            subscriber_decorators,
+        } = self;
         let mut tasks = Vec::new();
 
-        for reg in handlers {
+        for mut reg in handlers {
+            for dec in &subscriber_decorators {
+                reg.subscriber = dec.decorate(reg.subscriber);
+            }
+            if let Some(pub_) = reg.publisher.take() {
+                let mut decorated = pub_;
+                for dec in &publisher_decorators {
+                    decorated = dec.decorate(decorated);
+                }
+                reg.publisher = Some(decorated);
+            }
+
             let mut stream = reg
                 .subscriber
                 .subscribe(&reg.subscribe_topic)
@@ -155,8 +228,14 @@ impl Router {
             }));
         }
 
-        for task in tasks {
-            let _ = task.await;
+        let close_timeout = config.close_timeout;
+        token.cancelled().await;
+
+        let shutdown_result =
+            tokio::time::timeout(close_timeout, futures::future::join_all(tasks)).await;
+
+        if shutdown_result.is_err() {
+            error!("router close timeout exceeded");
         }
 
         Ok(())
