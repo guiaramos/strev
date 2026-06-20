@@ -2,7 +2,7 @@ mod error;
 mod handler;
 mod message;
 mod metadata;
-mod middleware;
+pub mod middleware;
 mod outcome;
 mod publisher;
 mod router;
