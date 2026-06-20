@@ -3,7 +3,6 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use strev::{CloseError, Message, MessageStream, SubscribeError, Topic};
-use tokio::sync::watch;
 
 use crate::marshaller::{DefaultMarshaller, Marshaller};
 
@@ -36,17 +35,12 @@ impl RedisSubscriberConfig {
 
 pub struct RedisSubscriber {
     config: Arc<RedisSubscriberConfig>,
-    close_tx: watch::Sender<bool>,
-    close_rx: watch::Receiver<bool>,
 }
 
 impl RedisSubscriber {
     pub fn new(config: RedisSubscriberConfig) -> Self {
-        let (close_tx, close_rx) = watch::channel(false);
         Self {
             config: Arc::new(config),
-            close_tx,
-            close_rx,
         }
     }
 }
@@ -57,7 +51,6 @@ impl strev::Subscriber for RedisSubscriber {
         let (tx, stream) = MessageStream::channel(self.config.buffer_size);
         let config = self.config.clone();
         let stream_key = topic.as_str().to_string();
-        let mut close_rx = self.close_rx.clone();
 
         let conn = config
             .client
@@ -77,7 +70,7 @@ impl strev::Subscriber for RedisSubscriber {
             let count = config.batch_size;
 
             loop {
-                if *close_rx.borrow() || tx.is_closed() {
+                if tx.is_closed() {
                     break;
                 }
 
@@ -97,12 +90,9 @@ impl strev::Subscriber for RedisSubscriber {
 
                 let entries = match result {
                     Ok(val) => parse_stream_response(val),
-                    Err(e) => {
-                        tracing::error!(error = %e, "xreadgroup failed");
-                        tokio::select! {
-                            _ = tokio::time::sleep(Duration::from_secs(1)) => continue,
-                            _ = close_rx.changed() => break,
-                        }
+                    Err(_) => {
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                        continue;
                     }
                 };
 
@@ -110,7 +100,6 @@ impl strev::Subscriber for RedisSubscriber {
                     let (payload, mut metadata) = match config.marshaller.unmarshal(&fields) {
                         Some(v) => v,
                         None => {
-                            tracing::warn!(entry_id = %entry_id, "failed to unmarshal");
                             let _: Result<(), _> = redis::cmd("XACK")
                                 .arg(&stream_key)
                                 .arg(group)
@@ -143,7 +132,6 @@ impl strev::Subscriber for RedisSubscriber {
     }
 
     async fn close(&mut self) -> Result<(), CloseError> {
-        let _ = self.close_tx.send(true);
         Ok(())
     }
 }
