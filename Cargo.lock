@@ -1593,14 +1593,29 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
- "cloudevents-sdk",
  "dashmap",
+ "strev",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+]
+
+[[package]]
+name = "strev-cloudevents"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "cloudevents-sdk",
  "serde_json",
  "strev",
+ "strev-channel",
+ "thiserror 2.0.18",
  "tokio",
  "tokio-stream",
  "tokio-util",
  "tracing",
+ "tracing-subscriber",
  "uuid",
 ]
 
