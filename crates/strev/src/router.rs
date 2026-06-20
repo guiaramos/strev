@@ -192,17 +192,17 @@ impl Router {
     ) {
         match handler.handle(msg).await {
             Ok(result) => {
-                if !result.produced.is_empty() {
-                    if let (Some(topic), Some(pub_)) = (publish_topic, publisher) {
-                        let messages = result
-                            .produced
-                            .into_iter()
-                            .map(|pm| Message::with_metadata(pm.payload, pm.metadata))
-                            .collect();
+                if !result.produced.is_empty()
+                    && let (Some(topic), Some(pub_)) = (publish_topic, publisher)
+                {
+                    let messages = result
+                        .produced
+                        .into_iter()
+                        .map(|pm| Message::with_metadata(pm.payload, pm.metadata))
+                        .collect();
 
-                        if let Err(e) = pub_.publish(topic, messages).await {
-                            error!(handler = handler_name, error = %e, "failed to publish produced messages");
-                        }
+                    if let Err(e) = pub_.publish(topic, messages).await {
+                        error!(handler = handler_name, error = %e, "failed to publish produced messages");
                     }
                 }
             }
