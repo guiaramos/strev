@@ -2,6 +2,7 @@ mod error;
 mod handler;
 mod message;
 mod metadata;
+mod middleware;
 mod outcome;
 mod publisher;
 mod stream;
@@ -12,6 +13,7 @@ pub use error::{
     CloseError, DeserializeError, HandlerError, PublishError, RouterError, SubscribeError,
 };
 pub use handler::{Handler, HandlerResult, ProducedMessage};
+pub use middleware::Middleware;
 pub use message::{AckState, Acked, Message, Nacked, Pending};
 pub use metadata::Metadata;
 pub use outcome::Outcome;
