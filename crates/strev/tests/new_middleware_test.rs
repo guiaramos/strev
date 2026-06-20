@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use strev::middleware::{
-    CircuitBreaker, DeduplicateRepository, Deduplicator, DelayOnError, Duplicator, IgnoreErrors,
+    CircuitBreaker, Deduplicator, DelayOnError, Duplicator, IgnoreErrors,
     InMemoryDeduplicateRepository, InstantAck, RandomFail,
 };
 use strev::{Handler, HandlerError, HandlerResult, Message, Middleware};
