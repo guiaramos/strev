@@ -32,12 +32,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo test -p strev -p strev-channel
 
-  test-integration:
-    name: Integration Tests
+  test-redis:
+    name: Redis Integration
     runs-on: ubuntu-latest
     services:
       redis:
-        image: redis:7-alpine
+        image: redis:7.4-alpine
         ports:
           - 6379:6379
         options: >-
@@ -52,3 +52,25 @@ jobs:
       - run: cargo test -p strev-redis
         env:
           REDIS_URL: redis://127.0.0.1:6379/
+
+  test-nats:
+    name: NATS Integration
+    runs-on: ubuntu-latest
+    services:
+      nats:
+        image: nats:2.11-alpine
+        ports:
+          - 4222:4222
+          - 8222:8222
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Wait for NATS
+        run: |
+          for i in $(seq 1 15); do
+            nc -z 127.0.0.1 4222 && break || sleep 1
+          done
+      - run: cargo test -p strev-nats
+        env:
+          NATS_URL: nats://127.0.0.1:4222
