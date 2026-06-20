@@ -10,8 +10,8 @@ use crate::outcome::Outcome;
 use crate::topic::Topic;
 
 pub struct HandlerResult {
-    pub outcome: Outcome,
-    pub produced: Vec<ProducedMessage>,
+    outcome: Outcome,
+    produced: Vec<ProducedMessage>,
 }
 
 impl HandlerResult {
@@ -34,6 +34,18 @@ impl HandlerResult {
             outcome: msg.ack(),
             produced,
         }
+    }
+
+    pub fn outcome(&self) -> Outcome {
+        self.outcome
+    }
+
+    pub fn produced(&self) -> &[ProducedMessage] {
+        &self.produced
+    }
+
+    pub fn into_produced(self) -> Vec<ProducedMessage> {
+        self.produced
     }
 }
 

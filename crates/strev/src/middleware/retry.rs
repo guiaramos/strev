@@ -1,3 +1,4 @@
+use std::num::NonZeroU32;
 use std::time::Duration;
 
 use crate::error::HandlerError;
@@ -6,7 +7,7 @@ use crate::message::{Message, Pending};
 use crate::middleware::Middleware;
 
 pub struct Retry {
-    pub max_attempts: u32,
+    pub max_attempts: NonZeroU32,
     pub initial_delay: Duration,
     pub multiplier: f64,
     pub max_delay: Duration,
@@ -25,7 +26,7 @@ impl Middleware for Retry {
 }
 
 struct RetryHandler {
-    max_attempts: u32,
+    max_attempts: NonZeroU32,
     initial_delay: Duration,
     multiplier: f64,
     max_delay: Duration,
@@ -44,7 +45,7 @@ impl Handler for RetryHandler {
                 let mut last_err = e;
                 let mut delay = self.initial_delay;
 
-                for _ in 1..self.max_attempts {
+                for _ in 1..self.max_attempts.get() {
                     tokio::time::sleep(delay).await;
                     delay = Duration::from_secs_f64(
                         (delay.as_secs_f64() * self.multiplier).min(self.max_delay.as_secs_f64()),

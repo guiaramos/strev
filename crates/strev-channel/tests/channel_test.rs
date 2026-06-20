@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use strev::{Message, Outcome, Publisher, Subscriber, Topic};
+use strev::{Message, Publisher, Subscriber, Topic};
 use strev_channel::Channel;
 use tokio_stream::StreamExt;
 
@@ -12,7 +12,7 @@ async fn publish_and_subscribe_single_message() {
 
     let msg = Message::new(Bytes::from("hello"));
     let outcomes = Publisher::publish(&channel, &topic, vec![msg]).await.unwrap();
-    assert_eq!(outcomes, vec![Outcome::Acked]);
+    assert!(outcomes.iter().all(|o| o.is_acked()));
 
     let received = stream.next().await.unwrap();
     assert_eq!(received.payload().as_ref(), b"hello");

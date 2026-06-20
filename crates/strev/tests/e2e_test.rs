@@ -1,3 +1,4 @@
+use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -175,7 +176,7 @@ async fn middleware_chain_applies_to_handler() {
             },
         )
         .with_middleware(Retry {
-            max_attempts: 3,
+            max_attempts: NonZeroU32::new(3).unwrap(),
             initial_delay: Duration::from_millis(10),
             multiplier: 2.0,
             max_delay: Duration::from_secs(1),
@@ -284,15 +285,12 @@ async fn retry_middleware_recovers_transient_failure() {
                     }
                     let payload = String::from_utf8_lossy(msg.payload()).to_string();
                     payloads.lock().await.push(payload);
-                    Ok(HandlerResult {
-                        outcome: msg.ack(),
-                        produced: vec![],
-                    })
+                    Ok(HandlerResult::ack(msg))
                 }
             },
         )
         .with_middleware(Retry {
-            max_attempts: 5,
+            max_attempts: NonZeroU32::new(5).unwrap(),
             initial_delay: Duration::from_millis(1),
             multiplier: 1.0,
             max_delay: Duration::from_millis(10),
@@ -337,10 +335,7 @@ async fn multiple_consumers_on_same_topic_both_receive() {
         let a = a.clone();
         async move {
             a.fetch_add(1, Ordering::SeqCst);
-            Ok(HandlerResult {
-                outcome: msg.ack(),
-                produced: vec![],
-            })
+            Ok(HandlerResult::ack(msg))
         }
     });
 
@@ -349,10 +344,7 @@ async fn multiple_consumers_on_same_topic_both_receive() {
         let b = b.clone();
         async move {
             b.fetch_add(1, Ordering::SeqCst);
-            Ok(HandlerResult {
-                outcome: msg.ack(),
-                produced: vec![],
-            })
+            Ok(HandlerResult::ack(msg))
         }
     });
 
@@ -397,10 +389,7 @@ async fn handler_error_does_not_crash_router() {
                 return Err(HandlerError::Processing("bad message".into()));
             }
             p.lock().await.push(payload);
-            Ok(HandlerResult {
-                outcome: msg.ack(),
-                produced: vec![],
-            })
+            Ok(HandlerResult::ack(msg))
         }
     });
 
