@@ -1,3 +1,9 @@
 [workspace]
 resolver = "2"
-members = ["crates/strev", "crates/strev-channel", "crates/strev-redis", "crates/strev-nats"]
+members = [
+    "crates/strev",
+    "crates/strev-channel",
+    "crates/strev-redis",
+    "crates/strev-nats",
+    "crates/strev-kafka",
+]
