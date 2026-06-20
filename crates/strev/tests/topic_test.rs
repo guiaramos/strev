@@ -1,4 +1,5 @@
-use strev::{Topic, Metadata, Outcome};
+use bytes::Bytes;
+use strev::{Message, Metadata, Topic};
 
 #[test]
 fn topic_from_str() {
@@ -40,9 +41,23 @@ fn metadata_missing_key_returns_none() {
 }
 
 #[test]
-fn outcome_variants() {
-    let acked = Outcome::Acked;
-    let nacked = Outcome::Nacked;
-    assert!(matches!(acked, Outcome::Acked));
-    assert!(matches!(nacked, Outcome::Nacked));
+fn outcome_ack_via_message() {
+    let msg = Message::new(Bytes::from("test"));
+    let outcome = msg.ack();
+    assert!(outcome.is_acked());
+    assert!(!outcome.is_nacked());
+}
+
+#[test]
+fn outcome_nack_via_message() {
+    let msg = Message::new(Bytes::from("test"));
+    let outcome = msg.nack();
+    assert!(outcome.is_nacked());
+    assert!(!outcome.is_acked());
+}
+
+#[test]
+#[should_panic(expected = "topic name must not be empty")]
+fn topic_rejects_empty_name() {
+    Topic::new("");
 }

@@ -53,11 +53,11 @@ impl Message<Pending> {
     }
 
     pub fn ack(self) -> Outcome {
-        Outcome::Acked
+        Outcome::acked()
     }
 
     pub fn nack(self) -> Outcome {
-        Outcome::Nacked
+        Outcome::nacked()
     }
 
     pub fn uuid(&self) -> &Uuid {

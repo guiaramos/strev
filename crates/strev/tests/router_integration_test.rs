@@ -68,10 +68,7 @@ async fn router_consumer_without_publisher() {
             let c = count_clone.clone();
             async move {
                 c.fetch_add(1, Ordering::SeqCst);
-                Ok(HandlerResult {
-                    outcome: msg.ack(),
-                    produced: vec![],
-                })
+                Ok(HandlerResult::ack(msg))
             }
         },
     );
@@ -108,10 +105,7 @@ async fn router_shutdown_via_cancellation_token() {
         topic,
         channel.clone(),
         |msg: Message| async move {
-            Ok(HandlerResult {
-                outcome: msg.ack(),
-                produced: vec![],
-            })
+            Ok(HandlerResult::ack(msg))
         },
     );
 

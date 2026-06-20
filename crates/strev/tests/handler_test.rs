@@ -1,39 +1,36 @@
 use bytes::Bytes;
-use strev::{Handler, HandlerError, HandlerResult, Message, Metadata, Outcome, ProducedMessage, Topic};
+use strev::{Handler, HandlerError, HandlerResult, Message, Metadata, ProducedMessage, Topic};
 
 async fn ack_handler(msg: Message) -> Result<HandlerResult, HandlerError> {
-    Ok(HandlerResult {
-        outcome: msg.ack(),
-        produced: vec![],
-    })
+    Ok(HandlerResult::ack(msg))
 }
 
 async fn produce_handler(msg: Message) -> Result<HandlerResult, HandlerError> {
-    Ok(HandlerResult {
-        outcome: msg.ack(),
-        produced: vec![ProducedMessage {
+    Ok(HandlerResult::ack_with(
+        msg,
+        vec![ProducedMessage {
             topic: Topic::new("output"),
             payload: Bytes::from("produced"),
             metadata: Metadata::new(),
         }],
-    })
+    ))
 }
 
 #[tokio::test]
 async fn fn_handler_acks() {
     let msg = Message::new(Bytes::from("hello"));
     let result = ack_handler.handle(msg).await.unwrap();
-    assert_eq!(result.outcome, Outcome::Acked);
-    assert!(result.produced.is_empty());
+    assert!(result.outcome().is_acked());
+    assert!(result.produced().is_empty());
 }
 
 #[tokio::test]
 async fn fn_handler_produces_messages() {
     let msg = Message::new(Bytes::from("hello"));
     let result = produce_handler.handle(msg).await.unwrap();
-    assert_eq!(result.outcome, Outcome::Acked);
-    assert_eq!(result.produced.len(), 1);
-    assert_eq!(result.produced[0].topic, Topic::new("output"));
+    assert!(result.outcome().is_acked());
+    assert_eq!(result.produced().len(), 1);
+    assert_eq!(result.produced()[0].topic, Topic::new("output"));
 }
 
 #[tokio::test]

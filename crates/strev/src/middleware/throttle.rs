@@ -1,3 +1,4 @@
+use std::num::NonZeroU32;
 use std::time::Duration;
 
 use crate::error::HandlerError;
@@ -6,12 +7,12 @@ use crate::message::{Message, Pending};
 use crate::middleware::Middleware;
 
 pub struct Throttle {
-    pub max_per_second: u32,
+    pub max_per_second: NonZeroU32,
 }
 
 impl Middleware for Throttle {
     fn wrap(&self, next: Box<dyn Handler>) -> Box<dyn Handler> {
-        let interval = Duration::from_secs_f64(1.0 / self.max_per_second as f64);
+        let interval = Duration::from_secs_f64(1.0 / self.max_per_second.get() as f64);
         Box::new(ThrottleHandler { interval, next })
     }
 }

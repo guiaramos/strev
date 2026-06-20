@@ -57,6 +57,12 @@ impl Publisher for Channel {
             outcomes.push(msg.ack());
         }
 
+        drop(senders);
+        self.inner.topics.alter(topic, |_, mut v| {
+            v.retain(|s| !s.is_closed());
+            v
+        });
+
         Ok(outcomes)
     }
 

@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use bytes::Bytes;
-use strev::{Handler, HandlerError, HandlerResult, Message, Middleware, Outcome};
+use strev::{Handler, HandlerError, HandlerResult, Message, Middleware};
 
 struct CountingMiddleware {
     count: Arc<AtomicU32>,
@@ -29,10 +29,7 @@ impl Handler for WrappedHandler {
 }
 
 async fn noop_handler(msg: Message) -> Result<HandlerResult, HandlerError> {
-    Ok(HandlerResult {
-        outcome: msg.ack(),
-        produced: vec![],
-    })
+    Ok(HandlerResult::ack(msg))
 }
 
 #[tokio::test]
@@ -45,7 +42,7 @@ async fn middleware_wraps_handler() {
 
     let msg = Message::new(Bytes::from("test"));
     let result = wrapped.handle(msg).await.unwrap();
-    assert_eq!(result.outcome, Outcome::Acked);
+    assert!(result.outcome().is_acked());
     assert_eq!(count.load(Ordering::SeqCst), 1);
 }
 

@@ -185,13 +185,13 @@ impl Router {
     ) {
         match handler.handle(msg).await {
             Ok(result) => {
-                if !result.produced.is_empty()
+                if !result.produced().is_empty()
                     && let Some(pub_) = publisher
                 {
                     let mut by_topic: std::collections::HashMap<&Topic, Vec<Message<Pending>>> =
                         std::collections::HashMap::new();
 
-                    for pm in &result.produced {
+                    for pm in result.produced() {
                         by_topic
                             .entry(&pm.topic)
                             .or_default()

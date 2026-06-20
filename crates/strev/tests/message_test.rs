@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
-use strev::{Message, Metadata, Outcome};
+use strev::{Message, Metadata};
 
 #[test]
 fn message_new_has_uuid() {
@@ -19,14 +19,14 @@ fn message_payload_roundtrip() {
 fn message_ack_returns_acked_outcome() {
     let msg = Message::new(Bytes::from("hello"));
     let outcome = msg.ack();
-    assert_eq!(outcome, Outcome::Acked);
+    assert!(outcome.is_acked());
 }
 
 #[test]
 fn message_nack_returns_nacked_outcome() {
     let msg = Message::new(Bytes::from("hello"));
     let outcome = msg.nack();
-    assert_eq!(outcome, Outcome::Nacked);
+    assert!(outcome.is_nacked());
 }
 
 #[test]
