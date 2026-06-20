@@ -6,4 +6,5 @@ members = [
     "crates/strev-redis",
     "crates/strev-nats",
     "crates/strev-kafka",
+    "crates/strev-cloudevents",
 ]
