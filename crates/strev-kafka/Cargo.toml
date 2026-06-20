@@ -1,0 +1,27 @@
+[package]
+name = "strev-kafka"
+version = "0.1.0"
+edition = "2024"
+description = "Apache Kafka backend for strev"
+license = "MIT"
+keywords = ["messaging", "pubsub", "kafka", "streams"]
+
+[features]
+sasl-ssl = ["rdkafka/ssl-vendored"]
+
+[dependencies]
+async-trait = "0.1"
+bytes = "1"
+rdkafka = { version = "0.36", default-features = false, features = ["cmake-build", "tokio", "libz-static"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+strev = { path = "../strev" }
+tokio = { version = "1", features = ["sync", "time"] }
+tracing = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util"] }
+tokio-stream = "0.1"
+tokio-util = "0.7"
+tracing-subscriber = "0.3"
+uuid = { version = "1", features = ["v4"] }
