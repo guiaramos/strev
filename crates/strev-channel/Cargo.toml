@@ -2,6 +2,8 @@
 name = "strev-channel"
 version = "0.1.0"
 edition = "2024"
+description = "In-memory channel backend for strev"
+license = "MIT"
 
 [dependencies]
 async-trait = "0.1"

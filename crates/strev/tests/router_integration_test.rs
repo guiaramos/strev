@@ -13,7 +13,6 @@ use tokio_util::sync::CancellationToken;
 async fn router_processes_messages_end_to_end() {
     let channel = Channel::new(16);
     let topic_in = Topic::new("input");
-    let topic_out = Topic::new("output");
     let count = Arc::new(AtomicU32::new(0));
 
     let mut router = Router::new();
@@ -23,16 +22,12 @@ async fn router_processes_messages_end_to_end() {
         "test_handler",
         topic_in.clone(),
         channel.clone(),
-        topic_out.clone(),
         channel.clone(),
         move |msg: Message| {
             let c = count_clone.clone();
             async move {
                 c.fetch_add(1, Ordering::SeqCst);
-                Ok(HandlerResult {
-                    outcome: msg.ack(),
-                    produced: vec![],
-                })
+                Ok(HandlerResult::ack(msg))
             }
         },
     );

@@ -2,6 +2,10 @@
 name = "strev"
 version = "0.1.0"
 edition = "2024"
+description = "Event-driven pub/sub messaging library with compile-time ack safety"
+license = "MIT"
+keywords = ["messaging", "pubsub", "event-driven", "async"]
+categories = ["asynchronous", "network-programming"]
 
 [dependencies]
 async-trait = "0.1"

@@ -14,6 +14,29 @@ pub struct HandlerResult {
     pub produced: Vec<ProducedMessage>,
 }
 
+impl HandlerResult {
+    pub fn ack(msg: Message<Pending>) -> Self {
+        Self {
+            outcome: msg.ack(),
+            produced: vec![],
+        }
+    }
+
+    pub fn nack(msg: Message<Pending>) -> Self {
+        Self {
+            outcome: msg.nack(),
+            produced: vec![],
+        }
+    }
+
+    pub fn ack_with(msg: Message<Pending>, produced: Vec<ProducedMessage>) -> Self {
+        Self {
+            outcome: msg.ack(),
+            produced,
+        }
+    }
+}
+
 pub struct ProducedMessage {
     pub topic: Topic,
     pub payload: Bytes,
