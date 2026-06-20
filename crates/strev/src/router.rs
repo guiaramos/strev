@@ -24,7 +24,6 @@ pub struct Router {
 struct HandlerRegistration {
     name: String,
     subscribe_topic: Topic,
-    publish_topic: Option<Topic>,
     handler: Box<dyn Handler>,
     subscriber: Box<dyn Subscriber>,
     publisher: Option<Box<dyn Publisher>>,
@@ -67,7 +66,6 @@ impl Router {
         name: impl Into<String>,
         subscribe_topic: Topic,
         subscriber: impl Subscriber + 'static,
-        publish_topic: Topic,
         publisher: impl Publisher + 'static,
         handler: impl Handler + 'static,
     ) -> HandlerBuilder<'_> {
@@ -75,7 +73,6 @@ impl Router {
         self.handlers.push(HandlerRegistration {
             name: name.into(),
             subscribe_topic,
-            publish_topic: Some(publish_topic),
             handler: Box::new(handler),
             subscriber: Box::new(subscriber),
             publisher: Some(Box::new(publisher)),
@@ -95,7 +92,6 @@ impl Router {
         self.handlers.push(HandlerRegistration {
             name: name.into(),
             subscribe_topic,
-            publish_topic: None,
             handler: Box::new(handler),
             subscriber: Box::new(subscriber),
             publisher: None,
@@ -134,7 +130,6 @@ impl Router {
             let handler = Self::build_handler_chain(reg.handler, &middlewares, reg.middlewares);
 
             let name = reg.name;
-            let publish_topic = reg.publish_topic;
             let publisher = reg.publisher;
             let cancel = token.clone();
 
@@ -149,7 +144,6 @@ impl Router {
                                         &name,
                                         &*handler,
                                         msg,
-                                        publish_topic.as_ref(),
                                         publisher.as_deref(),
                                     ).await;
                                 }
@@ -187,22 +181,27 @@ impl Router {
         handler_name: &str,
         handler: &dyn Handler,
         msg: Message<Pending>,
-        publish_topic: Option<&Topic>,
         publisher: Option<&dyn Publisher>,
     ) {
         match handler.handle(msg).await {
             Ok(result) => {
                 if !result.produced.is_empty()
-                    && let (Some(topic), Some(pub_)) = (publish_topic, publisher)
+                    && let Some(pub_) = publisher
                 {
-                    let messages = result
-                        .produced
-                        .into_iter()
-                        .map(|pm| Message::with_metadata(pm.payload, pm.metadata))
-                        .collect();
+                    let mut by_topic: std::collections::HashMap<&Topic, Vec<Message<Pending>>> =
+                        std::collections::HashMap::new();
 
-                    if let Err(e) = pub_.publish(topic, messages).await {
-                        error!(handler = handler_name, error = %e, "failed to publish produced messages");
+                    for pm in &result.produced {
+                        by_topic
+                            .entry(&pm.topic)
+                            .or_default()
+                            .push(Message::with_metadata(pm.payload.clone(), pm.metadata.clone()));
+                    }
+
+                    for (topic, messages) in by_topic {
+                        if let Err(e) = pub_.publish(topic, messages).await {
+                            error!(handler = handler_name, topic = %topic, error = %e, "failed to publish produced messages");
+                        }
                     }
                 }
             }

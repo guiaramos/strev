@@ -38,18 +38,19 @@ async fn pipeline_order_placed_to_confirmed_to_notification() {
     let mut router = Router::new();
 
     let confirmed_clone = confirmed_orders.clone();
+    let confirmed_topic = orders_confirmed.clone();
     router.add_handler(
         "process_order",
         orders_placed.clone(),
         channel.clone(),
-        orders_confirmed.clone(),
         channel.clone(),
         move |msg: Message| {
             let confirmed = confirmed_clone.clone();
+            let topic = confirmed_topic.clone();
             async move {
-                let order: Order = match msg.deserialize() {
-                    Ok(o) => o,
-                    Err(e) => {
+                let (order, msg): (Order, _) = match msg.try_deserialize() {
+                    Ok(v) => v,
+                    Err((e, msg)) => {
                         let _ = msg.nack();
                         return Err(HandlerError::Processing(Box::new(e)));
                     }
@@ -64,14 +65,14 @@ async fn pipeline_order_placed_to_confirmed_to_notification() {
 
                 let payload = serde_json::to_vec(&confirmation).unwrap();
 
-                Ok(HandlerResult {
-                    outcome: msg.ack(),
-                    produced: vec![ProducedMessage {
-                        topic: Topic::new("orders.confirmed"),
+                Ok(HandlerResult::ack_with(
+                    msg,
+                    vec![ProducedMessage {
+                        topic,
                         payload: Bytes::from(payload),
                         metadata: Metadata::new(),
                     }],
-                })
+                ))
             }
         },
     );
@@ -84,9 +85,9 @@ async fn pipeline_order_placed_to_confirmed_to_notification() {
         move |msg: Message| {
             let notified = notified_clone.clone();
             async move {
-                let confirmed: ConfirmedOrder = match msg.deserialize() {
-                    Ok(c) => c,
-                    Err(e) => {
+                let (confirmed, msg): (ConfirmedOrder, _) = match msg.try_deserialize() {
+                    Ok(v) => v,
+                    Err((e, msg)) => {
                         let _ = msg.nack();
                         return Err(HandlerError::Processing(Box::new(e)));
                     }
@@ -94,10 +95,7 @@ async fn pipeline_order_placed_to_confirmed_to_notification() {
 
                 notified.lock().await.push(confirmed.order_id);
 
-                Ok(HandlerResult {
-                    outcome: msg.ack(),
-                    produced: vec![],
-                })
+                Ok(HandlerResult::ack(msg))
             }
         },
     );
@@ -148,7 +146,6 @@ async fn pipeline_order_placed_to_confirmed_to_notification() {
 async fn middleware_chain_applies_to_handler() {
     let channel = Channel::new(64);
     let topic_in = Topic::new("input");
-    let topic_out = Topic::new("output");
 
     let processed = Arc::new(Mutex::new(Vec::<(String, bool)>::new()));
 
@@ -165,7 +162,6 @@ async fn middleware_chain_applies_to_handler() {
             "check_middleware",
             topic_in.clone(),
             channel.clone(),
-            topic_out.clone(),
             channel.clone(),
             move |msg: Message| {
                 let processed = processed_clone.clone();
@@ -174,10 +170,7 @@ async fn middleware_chain_applies_to_handler() {
                     let payload = String::from_utf8_lossy(msg.payload()).to_string();
                     processed.lock().await.push((payload, has_correlation));
 
-                    Ok(HandlerResult {
-                        outcome: msg.ack(),
-                        produced: vec![],
-                    })
+                    Ok(HandlerResult::ack(msg))
                 }
             },
         )
@@ -227,16 +220,12 @@ async fn handler_nack_does_not_produce_messages() {
         "nack_handler",
         topic_in.clone(),
         channel.clone(),
-        topic_out.clone(),
         channel.clone(),
         move |msg: Message| {
             let count = nack_clone.clone();
             async move {
                 count.fetch_add(1, Ordering::SeqCst);
-                Ok(HandlerResult {
-                    outcome: msg.nack(),
-                    produced: vec![],
-                })
+                Ok(HandlerResult::nack(msg))
             }
         },
     );

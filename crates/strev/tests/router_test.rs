@@ -1,4 +1,4 @@
-use strev::{Handler, HandlerResult, Message, Middleware, Router, HandlerError};
+use strev::{Handler, Middleware, Router};
 
 struct NoopMiddleware;
 

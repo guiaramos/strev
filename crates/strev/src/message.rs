@@ -79,4 +79,11 @@ impl Message<Pending> {
     pub fn deserialize<T: DeserializeOwned>(&self) -> Result<T, DeserializeError> {
         Ok(serde_json::from_slice(&self.payload)?)
     }
+
+    pub fn try_deserialize<T: DeserializeOwned>(self) -> Result<(T, Self), (DeserializeError, Self)> {
+        match serde_json::from_slice(&self.payload) {
+            Ok(value) => Ok((value, self)),
+            Err(e) => Err((DeserializeError::Json(e), self)),
+        }
+    }
 }
