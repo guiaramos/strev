@@ -80,6 +80,15 @@ impl Message<Pending> {
         Ok(serde_json::from_slice(&self.payload)?)
     }
 
+    pub fn copy(&self) -> Self {
+        Self {
+            uuid: Uuid::new_v4(),
+            metadata: self.metadata.clone(),
+            payload: self.payload.clone(),
+            _state: PhantomData,
+        }
+    }
+
     pub fn try_deserialize<T: DeserializeOwned>(self) -> Result<(T, Self), (DeserializeError, Self)> {
         match serde_json::from_slice(&self.payload) {
             Ok(value) => Ok((value, self)),

@@ -9,6 +9,7 @@ use crate::metadata::Metadata;
 use crate::outcome::Outcome;
 use crate::topic::Topic;
 
+#[derive(Debug)]
 pub struct HandlerResult {
     outcome: Outcome,
     produced: Vec<ProducedMessage>,
@@ -47,12 +48,38 @@ impl HandlerResult {
     pub fn into_produced(self) -> Vec<ProducedMessage> {
         self.produced
     }
+
+    pub(crate) fn empty_ack() -> Self {
+        Self {
+            outcome: Outcome::acked(),
+            produced: vec![],
+        }
+    }
 }
 
+#[derive(Debug)]
 pub struct ProducedMessage {
     pub topic: Topic,
     pub payload: Bytes,
     pub metadata: Metadata,
+}
+
+pub fn passthrough(topic: Topic) -> impl Handler {
+    move |msg: Message<Pending>| {
+        let t = topic.clone();
+        async move {
+            let payload = msg.payload().clone();
+            let metadata = msg.metadata().clone();
+            Ok(HandlerResult::ack_with(
+                msg,
+                vec![ProducedMessage {
+                    topic: t,
+                    payload,
+                    metadata,
+                }],
+            ))
+        }
+    }
 }
 
 #[async_trait]
