@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
-use strev::{Message, Metadata, Outcome, Pending};
+use strev::{Message, Metadata, Outcome};
 
 #[test]
 fn message_new_has_uuid() {
