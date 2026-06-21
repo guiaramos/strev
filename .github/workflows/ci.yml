@@ -135,6 +135,27 @@ jobs:
         env:
           DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
 
+  test-mongodb:
+    name: MongoDB Integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Start MongoDB replica set
+        run: |
+          docker run -d --name mongo -p 27017:27017 mongo:7 --replSet rs0 --bind_ip_all
+          for i in $(seq 1 20); do
+            docker exec mongo mongosh --quiet --eval "db.runCommand({ ping: 1 })" >/dev/null 2>&1 && break || sleep 1
+          done
+          docker exec mongo mongosh --quiet --eval "rs.initiate({_id:'rs0',members:[{_id:0,host:'localhost:27017'}]})"
+          for i in $(seq 1 20); do
+            [ "$(docker exec mongo mongosh --quiet --eval 'db.hello().isWritablePrimary')" = "true" ] && break || sleep 1
+          done
+      - run: cargo test -p strev-mongodb
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/?directConnection=true
+
   commitlint:
     name: Commit Lint
     runs-on: ubuntu-latest

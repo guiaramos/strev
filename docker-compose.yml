@@ -58,3 +58,15 @@ services:
       interval: 2s
       timeout: 3s
       retries: 5
+
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval \"try { rs.status().ok } catch (e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'localhost:27017'}]}) }; db.hello().isWritablePrimary\" | grep -q true"]
+      interval: 5s
+      timeout: 10s
+      retries: 12
+      start_period: 5s

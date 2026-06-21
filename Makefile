@@ -10,6 +10,7 @@ test-integration: services
 	NATS_URL="nats://127.0.0.1:4222" cargo test -p strev-nats -- --nocapture
 	KAFKA_BROKERS="localhost:9092" cargo test -p strev-kafka -- --nocapture
 	DATABASE_URL="postgres://postgres:postgres@127.0.0.1:5432/postgres" cargo test -p strev-postgres -- --nocapture
+	MONGODB_URI="mongodb://127.0.0.1:27017/?directConnection=true" cargo test -p strev-mongodb -- --nocapture
 	$(MAKE) services-down
 
 test-all: services
@@ -18,6 +19,7 @@ test-all: services
 	NATS_URL="nats://127.0.0.1:4222" cargo test -p strev-nats -- --nocapture
 	KAFKA_BROKERS="localhost:9092" cargo test -p strev-kafka -- --nocapture
 	DATABASE_URL="postgres://postgres:postgres@127.0.0.1:5432/postgres" cargo test -p strev-postgres -- --nocapture
+	MONGODB_URI="mongodb://127.0.0.1:27017/?directConnection=true" cargo test -p strev-mongodb -- --nocapture
 	$(MAKE) services-down
 
 services:

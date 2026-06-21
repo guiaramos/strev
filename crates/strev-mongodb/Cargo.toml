@@ -1,0 +1,24 @@
+[package]
+name = "strev-mongodb"
+version.workspace = true
+edition.workspace = true
+description = "MongoDB backend for strev"
+license.workspace = true
+repository.workspace = true
+keywords = ["messaging", "pubsub", "mongodb", "changestreams"]
+
+[dependencies]
+async-trait = "0.1"
+bytes = "1"
+futures = "0.3"
+mongodb = "3"
+strev = { path = "../strev", version = "0.2.0" }
+tokio = { version = "1", features = ["sync", "time"] }
+tracing = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util"] }
+tokio-stream = "0.1"
+tokio-util = "0.7"
+tracing-subscriber = "0.3"
+uuid = { version = "1", features = ["v4"] }

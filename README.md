@@ -31,6 +31,7 @@ strev-redis = { git = "https://github.com/guiaramos/strev" }     # Redis Streams
 strev-nats = { git = "https://github.com/guiaramos/strev" }      # NATS JetStream
 strev-kafka = { git = "https://github.com/guiaramos/strev" }     # Apache Kafka
 strev-postgres = { git = "https://github.com/guiaramos/strev" }  # PostgreSQL
+strev-mongodb = { git = "https://github.com/guiaramos/strev" }   # MongoDB
 ```
 
 ## Quickstart
@@ -136,6 +137,7 @@ for a sink, or `add_handler` when a handler also publishes to another topic.
 | NATS JetStream | `strev-nats`       | durable pull consumers, headers as metadata        |
 | Apache Kafka   | `strev-kafka`      | consumer groups, manual offset commits             |
 | PostgreSQL     | `strev-postgres`   | durable table, per-group offsets, pure Rust (sqlx) |
+| MongoDB        | `strev-mongodb`    | change streams, resume tokens (needs replica set)  |
 
 `strev-kafka` exposes a `sasl-ssl` feature that enables TLS and SASL for managed brokers,
 and a config passthrough for arbitrary client properties:
@@ -179,6 +181,7 @@ Runnable examples live under each crate's `examples/` directory:
 - `strev-nats`: `nats_pubsub`
 - `strev-kafka`: `kafka_pubsub`
 - `strev-postgres`: `postgres_pubsub`
+- `strev-mongodb`: `mongodb_pubsub`
 - `strev-cloudevents`: `router_cloudevents`
 
 Run one with, for example:
