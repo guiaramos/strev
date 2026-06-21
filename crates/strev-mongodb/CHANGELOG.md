@@ -11,20 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- *(strev-postgres)* add PostgreSQL pubsub backend
+- *(strev-mongodb)* add MongoDB backend with change streams
 
 ### Other
 
 - release v0.3.0
-- release v0.2.0 ([#6](https://github.com/guiaramos/strev/pull/6))
-- release v0.2.0
-
-## [0.2.0](https://github.com/guiaramos/strev/releases/tag/v0.2.0) - 2026-06-21
-
-### Added
-
-- *(strev-postgres)* add PostgreSQL pubsub backend
-
-### Other
-
-- release v0.2.0
