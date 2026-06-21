@@ -1,9 +1,10 @@
 [package]
 name = "strev"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 description = "Event-driven pub/sub messaging library with compile-time ack safety"
-license = "MIT"
+license.workspace = true
+repository.workspace = true
 keywords = ["messaging", "pubsub", "event-driven", "async"]
 categories = ["asynchronous", "network-programming"]
 
@@ -21,7 +22,7 @@ tracing = "0.1"
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
-strev-channel = { path = "../strev-channel" }
+strev-channel = { path = "../strev-channel", version = "0.1.0" }
 tokio = { version = "1", features = ["full", "test-util"] }
 tokio-stream = "0.1"
 tokio-util = "0.7"

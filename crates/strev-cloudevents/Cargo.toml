@@ -1,9 +1,10 @@
 [package]
 name = "strev-cloudevents"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 description = "CloudEvents enveloping decorators for strev"
-license = "MIT"
+license.workspace = true
+repository.workspace = true
 keywords = ["messaging", "pubsub", "cloudevents", "eventing"]
 
 [dependencies]
@@ -11,14 +12,14 @@ async-trait = "0.1"
 bytes = "1"
 cloudevents-sdk = "0.8"
 serde_json = "1"
-strev = { path = "../strev" }
+strev = { path = "../strev", version = "0.1.0" }
 thiserror = "2"
 tokio = { version = "1", features = ["sync"] }
 tokio-stream = "0.1"
 tracing = "0.1"
 
 [dev-dependencies]
-strev-channel = { path = "../strev-channel" }
+strev-channel = { path = "../strev-channel", version = "0.1.0" }
 bytes = "1"
 tokio = { version = "1", features = ["full", "test-util"] }
 tokio-util = "0.7"
