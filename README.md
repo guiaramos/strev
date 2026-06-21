@@ -206,6 +206,20 @@ Format and lint:
 make check          # fmt check + clippy + unit tests
 ```
 
+### Git hooks
+
+Commits follow [Conventional Commits](https://www.conventionalcommits.org), which the
+release automation relies on. Install the hook manager and commit linter, then enable
+the hooks:
+
+```bash
+brew install lefthook committed
+lefthook install
+```
+
+The `pre-commit` hook runs `cargo fmt --check` and clippy; the `commit-msg` hook checks
+the message format. CI enforces both regardless of local hooks.
+
 ## License
 
 [MIT](LICENSE)
