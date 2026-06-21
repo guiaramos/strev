@@ -32,6 +32,7 @@ strev-nats = { git = "https://github.com/guiaramos/strev" }      # NATS JetStrea
 strev-kafka = { git = "https://github.com/guiaramos/strev" }     # Apache Kafka
 strev-postgres = { git = "https://github.com/guiaramos/strev" }  # PostgreSQL
 strev-mongodb = { git = "https://github.com/guiaramos/strev" }   # MongoDB
+strev-telemetry = { git = "https://github.com/guiaramos/strev" } # tracing + metrics
 ```
 
 ## Quickstart
@@ -158,6 +159,10 @@ order. Built-in middleware:
 `Retry`, `Timeout`, `Throttle`, `CircuitBreaker`, `Deduplicator`, `CorrelationId`,
 `PoisonQueue`, `DelayOnError`, `Duplicator`, `IgnoreErrors`, `InstantAck`, `RandomFail`.
 
+The `strev-telemetry` crate adds a `Telemetry` middleware that emits a `tracing` span per
+message plus `metrics` facade measurements (handler-duration histogram, acked/nacked/
+errored counters), so you can wire strev into any tracing/metrics exporter you already use.
+
 ## Decorators and CloudEvents
 
 Decorators transform messages at the transport boundary on both the publish and
@@ -183,6 +188,7 @@ Runnable examples live under each crate's `examples/` directory:
 - `strev-postgres`: `postgres_pubsub`
 - `strev-mongodb`: `mongodb_pubsub`
 - `strev-cloudevents`: `router_cloudevents`
+- `strev-telemetry`: `telemetry`
 
 Run one with, for example:
 

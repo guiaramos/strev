@@ -9,6 +9,7 @@ members = [
     "crates/strev-cloudevents",
     "crates/strev-postgres",
     "crates/strev-mongodb",
+    "crates/strev-telemetry",
 ]
 
 [workspace.package]
