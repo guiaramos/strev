@@ -9,6 +9,7 @@ test-integration: services
 	REDIS_URL="redis://127.0.0.1:6379/" cargo test -p strev-redis -- --nocapture
 	NATS_URL="nats://127.0.0.1:4222" cargo test -p strev-nats -- --nocapture
 	KAFKA_BROKERS="localhost:9092" cargo test -p strev-kafka -- --nocapture
+	DATABASE_URL="postgres://postgres:postgres@127.0.0.1:5432/postgres" cargo test -p strev-postgres -- --nocapture
 	$(MAKE) services-down
 
 test-all: services
@@ -16,6 +17,7 @@ test-all: services
 	REDIS_URL="redis://127.0.0.1:6379/" cargo test -p strev-redis -- --nocapture
 	NATS_URL="nats://127.0.0.1:4222" cargo test -p strev-nats -- --nocapture
 	KAFKA_BROKERS="localhost:9092" cargo test -p strev-kafka -- --nocapture
+	DATABASE_URL="postgres://postgres:postgres@127.0.0.1:5432/postgres" cargo test -p strev-postgres -- --nocapture
 	$(MAKE) services-down
 
 services:
