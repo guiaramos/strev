@@ -109,3 +109,21 @@ jobs:
       - run: cargo test -p strev-kafka
         env:
           KAFKA_BROKERS: localhost:9092
+
+  commitlint:
+    name: Commit Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: committed
+      - name: Lint commit messages
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            committed "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}" --no-merge-commit -v
+          else
+            committed "${{ github.event.before }}..${{ github.sha }}" --no-merge-commit -v
+          fi
