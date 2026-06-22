@@ -10,6 +10,7 @@ members = [
     "crates/strev-postgres",
     "crates/strev-mongodb",
     "crates/strev-telemetry",
+    "crates/strev-testsuite",
 ]
 
 [workspace.package]
