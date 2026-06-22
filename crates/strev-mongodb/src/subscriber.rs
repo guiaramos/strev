@@ -76,7 +76,17 @@ impl strev::Subscriber for MongoSubscriber {
         let (sender, stream) = MessageStream::channel(self.config.buffer_size);
 
         tokio::spawn(async move {
-            while let Some(result) = change_stream.next().await {
+            loop {
+                let next = tokio::select! {
+                    biased;
+                    _ = sender.closed() => break,
+                    next = change_stream.next() => next,
+                };
+
+                let Some(result) = next else {
+                    break;
+                };
+
                 let event = match result {
                     Ok(event) => event,
                     Err(_) => break,
