@@ -5,11 +5,12 @@ edition.workspace = true
 description = "In-memory channel backend for strev"
 license.workspace = true
 repository.workspace = true
+readme.workspace = true
 
 [dependencies]
 async-trait = "0.1"
 dashmap = "6"
-strev = { path = "../strev", version = "0.5.0" }
+strev = { path = "../strev", version = "0.6.0" }
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 

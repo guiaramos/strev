@@ -5,12 +5,13 @@ edition.workspace = true
 description = "Reusable pub/sub conformance scenarios for strev backends"
 license.workspace = true
 repository.workspace = true
+readme.workspace = true
 keywords = ["messaging", "pubsub", "testing", "conformance"]
 
 [dependencies]
 async-trait = "0.1"
 bytes = "1"
-strev = { path = "../strev", version = "0.5.0" }
+strev = { path = "../strev", version = "0.6.0" }
 tokio = { version = "1", features = ["time"] }
 tokio-stream = "0.1"
 uuid = { version = "1", features = ["v4"] }

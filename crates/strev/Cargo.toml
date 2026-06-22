@@ -5,6 +5,7 @@ edition.workspace = true
 description = "Event-driven pub/sub messaging library with compile-time ack safety"
 license.workspace = true
 repository.workspace = true
+readme.workspace = true
 keywords = ["messaging", "pubsub", "event-driven", "async"]
 categories = ["asynchronous", "network-programming"]
 

@@ -5,6 +5,7 @@ edition.workspace = true
 description = "NATS JetStream backend for strev"
 license.workspace = true
 repository.workspace = true
+readme.workspace = true
 keywords = ["messaging", "pubsub", "nats", "jetstream"]
 
 [dependencies]
@@ -14,7 +15,7 @@ bytes = "1"
 futures = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-strev = { path = "../strev", version = "0.5.0" }
+strev = { path = "../strev", version = "0.6.0" }
 tokio = { version = "1", features = ["sync", "time"] }
 tracing = "0.1"
 
