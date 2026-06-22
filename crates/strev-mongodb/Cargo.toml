@@ -5,6 +5,7 @@ edition.workspace = true
 description = "MongoDB backend for strev"
 license.workspace = true
 repository.workspace = true
+readme.workspace = true
 keywords = ["messaging", "pubsub", "mongodb", "changestreams"]
 
 [dependencies]
@@ -12,7 +13,7 @@ async-trait = "0.1"
 bytes = "1"
 futures = "0.3"
 mongodb = "3"
-strev = { path = "../strev", version = "0.5.0" }
+strev = { path = "../strev", version = "0.6.0" }
 tokio = { version = "1", features = ["sync", "time"] }
 tracing = "0.1"
 

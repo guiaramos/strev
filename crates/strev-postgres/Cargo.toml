@@ -5,6 +5,7 @@ edition.workspace = true
 description = "PostgreSQL backend for strev"
 license.workspace = true
 repository.workspace = true
+readme.workspace = true
 keywords = ["messaging", "pubsub", "postgres", "sql"]
 
 [dependencies]
@@ -12,7 +13,7 @@ async-trait = "0.1"
 bytes = "1"
 serde_json = "1"
 sqlx = { version = "0.8", default-features = false, features = ["postgres", "runtime-tokio", "json"] }
-strev = { path = "../strev", version = "0.5.0" }
+strev = { path = "../strev", version = "0.6.0" }
 tokio = { version = "1", features = ["sync", "time"] }
 tracing = "0.1"
 
