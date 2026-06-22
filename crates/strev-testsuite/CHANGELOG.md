@@ -9,27 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.0](https://github.com/guiaramos/strev/releases/tag/v0.4.0) - 2026-06-22
 
-### Added
-
-- *(strev-mongodb)* add MongoDB backend with change streams
-
-### Fixed
-
-- *(subscribers)* stop dropped subscribers from consuming messages
-
 ### Other
 
 - release v0.4.0
 - *(strev-testsuite)* add cross-backend pub/sub conformance suite
-- release v0.3.0 ([#8](https://github.com/guiaramos/strev/pull/8))
-- release v0.3.0
-
-## [0.3.0](https://github.com/guiaramos/strev/releases/tag/v0.3.0) - 2026-06-21
-
-### Added
-
-- *(strev-mongodb)* add MongoDB backend with change streams
-
-### Other
-
-- release v0.3.0
