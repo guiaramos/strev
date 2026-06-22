@@ -13,7 +13,7 @@ env:
 jobs:
   check:
     name: Check & Lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -21,13 +21,13 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - name: Install librdkafka build deps
-        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev=8.5.0-2ubuntu10.9 libsasl2-dev=2.1.28+dfsg1-5ubuntu3.1
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets
 
   test-unit:
     name: Unit Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -36,7 +36,7 @@ jobs:
 
   test-redis:
     name: Redis Integration
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       redis:
         image: redis:7.4-alpine
@@ -57,7 +57,7 @@ jobs:
 
   test-nats:
     name: NATS Integration
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -75,7 +75,7 @@ jobs:
 
   test-kafka:
     name: Kafka Integration
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       kafka:
         image: apache/kafka:3.8.1
@@ -105,14 +105,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install librdkafka build deps
-        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libsasl2-dev
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev=8.5.0-2ubuntu10.9 libsasl2-dev=2.1.28+dfsg1-5ubuntu3.1
       - run: cargo test -p strev-kafka
         env:
           KAFKA_BROKERS: localhost:9092
 
   test-postgres:
     name: Postgres Integration
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:16-alpine
@@ -137,7 +137,7 @@ jobs:
 
   test-mongodb:
     name: MongoDB Integration
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -158,7 +158,7 @@ jobs:
 
   commitlint:
     name: Commit Lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
         with:
