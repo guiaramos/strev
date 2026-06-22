@@ -81,7 +81,13 @@ impl strev::Subscriber for NatsSubscriber {
             };
 
             loop {
-                match messages.next().await {
+                let next = tokio::select! {
+                    biased;
+                    _ = tx.closed() => break,
+                    next = messages.next() => next,
+                };
+
+                match next {
                     Some(Ok(jetstream_msg)) => {
                         let payload = jetstream_msg.payload.clone();
                         let mut metadata = Metadata::new();
@@ -100,13 +106,11 @@ impl strev::Subscriber for NatsSubscriber {
 
                         let msg = Message::with_metadata(payload, metadata);
 
-                        if jetstream_msg.ack().await.is_err() {
-                            continue;
-                        }
-
                         if tx.send(msg).await.is_err() {
                             break;
                         }
+
+                        let _ = jetstream_msg.ack().await;
                     }
                     Some(Err(_)) => {
                         tokio::time::sleep(Duration::from_millis(500)).await;

@@ -69,7 +69,13 @@ impl strev::Subscriber for KafkaSubscriber {
 
         tokio::spawn(async move {
             loop {
-                match consumer.recv().await {
+                let received = tokio::select! {
+                    biased;
+                    _ = tx.closed() => break,
+                    received = consumer.recv() => received,
+                };
+
+                match received {
                     Ok(borrowed) => {
                         let payload = borrowed
                             .payload()
