@@ -34,6 +34,7 @@ strev-postgres = { git = "https://github.com/guiaramos/strev" }  # PostgreSQL
 strev-mongodb = { git = "https://github.com/guiaramos/strev" }   # MongoDB
 strev-amqp = { git = "https://github.com/guiaramos/strev" }      # AMQP / RabbitMQ
 strev-telemetry = { git = "https://github.com/guiaramos/strev" } # tracing + metrics
+strev-cqrs = { git = "https://github.com/guiaramos/strev" }      # CQRS buses + processors
 ```
 
 ## Quickstart
@@ -180,6 +181,26 @@ router.add_subscriber_decorator(CloudEventsSubscriberDecorator::new(codec.clone(
 router.add_publisher_decorator(CloudEventsPublisherDecorator::new(codec));
 ```
 
+## CQRS
+
+The `strev-cqrs` crate adds typed command/event buses and processors on top of the
+router. Commands and events are `serde` types identified by a `NAME`; a command is
+handled by exactly one handler, an event fans out to every handler.
+
+```rust
+#[derive(Serialize, Deserialize)]
+struct PlaceOrder { order_id: u64 }
+impl Command for PlaceOrder { const NAME: &'static str = "PlaceOrder"; }
+
+command_bus.send(PlaceOrder { order_id: 1 }).await?;
+
+command_processor.add_handler("place-order", |cmd: PlaceOrder, ctx: Context| async move {
+    // ctx.message_id() for correlation
+    Ok(())
+})?;
+command_processor.register(&mut router);
+```
+
 ## Examples
 
 Runnable examples live under each crate's `examples/` directory:
@@ -193,6 +214,7 @@ Runnable examples live under each crate's `examples/` directory:
 - `strev-amqp`: `amqp_pubsub`
 - `strev-cloudevents`: `router_cloudevents`
 - `strev-telemetry`: `telemetry`
+- `strev-cqrs`: `cqrs`
 
 Run one with, for example:
 
