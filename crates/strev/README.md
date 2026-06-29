@@ -157,7 +157,8 @@ Register middleware on the router with `add_middleware`; it wraps every handler 
 order. Built-in middleware:
 
 `Retry`, `Timeout`, `Throttle`, `CircuitBreaker`, `Deduplicator`, `CorrelationId`,
-`PoisonQueue`, `DelayOnError`, `Duplicator`, `IgnoreErrors`, `InstantAck`, `RandomFail`.
+`PoisonQueue`, `DelayOnError`, `Duplicator`, `IgnoreErrors`, `InstantAck`, `RandomFail`,
+`Recoverer` (catches a panicking handler and converts it to an error so the consumer survives).
 
 The `strev-telemetry` crate adds a `Telemetry` middleware that emits a `tracing` span per
 message plus `metrics` facade measurements (handler-duration histogram, acked/nacked/
