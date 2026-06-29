@@ -181,6 +181,19 @@ router.add_subscriber_decorator(CloudEventsSubscriberDecorator::new(codec.clone(
 router.add_publisher_decorator(CloudEventsPublisherDecorator::new(codec));
 ```
 
+## Forwarder (outbox / bridge)
+
+`ForwarderPublisher` redirects published messages to a single forwarder topic, recording
+their real destination in a reserved metadata key (payload untouched, zero-copy - no
+envelope serialization). A `Forwarder` consumes that topic and relays each message to its
+destination, possibly on a different backend - enabling the transactional outbox pattern
+and cross-backend bridging.
+
+```rust
+Forwarder::register(&mut router, subscriber_in, Arc::new(publisher_out), ForwarderConfig::new());
+let publisher = ForwarderPublisher::new(Box::new(outbox_publisher)); // app publishes as usual
+```
+
 ## CQRS
 
 The `strev-cqrs` crate adds typed command/event buses and processors on top of the
@@ -205,7 +218,7 @@ command_processor.register(&mut router);
 
 Runnable examples live under each crate's `examples/` directory:
 
-- `strev`: `basic_pubsub`, `router`, `consumer_groups`, `middleware_chain`, `deduplication`, `poison_queue`, `event_pipeline`
+- `strev`: `basic_pubsub`, `router`, `consumer_groups`, `middleware_chain`, `deduplication`, `poison_queue`, `event_pipeline`, `forwarder`
 - `strev-redis`: `redis_pubsub`
 - `strev-nats`: `nats_pubsub`
 - `strev-kafka`: `kafka_pubsub`
