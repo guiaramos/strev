@@ -97,3 +97,10 @@ where
         (self)(msg).await
     }
 }
+
+#[async_trait]
+impl Handler for Box<dyn Handler> {
+    async fn handle(&self, msg: Message<Pending>) -> Result<HandlerResult, HandlerError> {
+        (**self).handle(msg).await
+    }
+}

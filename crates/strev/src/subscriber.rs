@@ -10,3 +10,14 @@ pub trait Subscriber: Send + Sync {
 
     async fn close(&mut self) -> Result<(), CloseError>;
 }
+
+#[async_trait]
+impl Subscriber for Box<dyn Subscriber> {
+    async fn subscribe(&self, topic: &Topic) -> Result<MessageStream, SubscribeError> {
+        (**self).subscribe(topic).await
+    }
+
+    async fn close(&mut self) -> Result<(), CloseError> {
+        (**self).close().await
+    }
+}
