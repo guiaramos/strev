@@ -11,7 +11,7 @@ keywords = ["messaging", "pubsub", "observability", "metrics"]
 [dependencies]
 async-trait = "0.1"
 metrics = "0.24"
-strev = { path = "../strev", version = "0.6.0" }
+strev = { path = "../strev", version = "0.6.1" }
 tracing = "0.1"
 
 [dev-dependencies]
