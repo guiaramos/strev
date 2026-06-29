@@ -9,6 +9,7 @@
 //! `strev-kafka`. CloudEvents enveloping lives in `strev-cloudevents`.
 pub mod decorator;
 mod error;
+mod forwarder;
 mod handler;
 mod message;
 mod metadata;
@@ -27,6 +28,7 @@ pub use decorator::{
 pub use error::{
     CloseError, DeserializeError, HandlerError, PublishError, RouterError, SubscribeError,
 };
+pub use forwarder::{Forwarder, ForwarderConfig, ForwarderPublisher};
 pub use handler::{Handler, HandlerResult, ProducedMessage, passthrough};
 pub use message::{AckState, Acked, Message, Nacked, Pending};
 pub use metadata::Metadata;
