@@ -12,6 +12,7 @@ members = [
     "crates/strev-telemetry",
     "crates/strev-testsuite",
     "crates/strev-amqp",
+    "crates/strev-cqrs",
 ]
 
 [workspace.package]
