@@ -11,6 +11,7 @@ test-integration: services
 	KAFKA_BROKERS="localhost:9092" cargo test -p strev-kafka -- --nocapture
 	DATABASE_URL="postgres://postgres:postgres@127.0.0.1:5432/postgres" cargo test -p strev-postgres -- --nocapture
 	MONGODB_URI="mongodb://127.0.0.1:27017/?directConnection=true" cargo test -p strev-mongodb -- --nocapture
+	AMQP_URI="amqp://guest:guest@127.0.0.1:5672/%2f" cargo test -p strev-amqp -- --nocapture
 	$(MAKE) services-down
 
 test-all: services
@@ -20,6 +21,7 @@ test-all: services
 	KAFKA_BROKERS="localhost:9092" cargo test -p strev-kafka -- --nocapture
 	DATABASE_URL="postgres://postgres:postgres@127.0.0.1:5432/postgres" cargo test -p strev-postgres -- --nocapture
 	MONGODB_URI="mongodb://127.0.0.1:27017/?directConnection=true" cargo test -p strev-mongodb -- --nocapture
+	AMQP_URI="amqp://guest:guest@127.0.0.1:5672/%2f" cargo test -p strev-amqp -- --nocapture
 	$(MAKE) services-down
 
 services:

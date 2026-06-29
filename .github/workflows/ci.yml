@@ -156,6 +156,27 @@ jobs:
         env:
           MONGODB_URI: mongodb://127.0.0.1:27017/?directConnection=true
 
+  test-amqp:
+    name: AMQP Integration
+    runs-on: ubuntu-24.04
+    services:
+      rabbitmq:
+        image: rabbitmq:3.13
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p strev-amqp
+        env:
+          AMQP_URI: amqp://guest:guest@127.0.0.1:5672/%2f
+
   commitlint:
     name: Commit Lint
     runs-on: ubuntu-24.04

@@ -11,6 +11,7 @@ members = [
     "crates/strev-mongodb",
     "crates/strev-telemetry",
     "crates/strev-testsuite",
+    "crates/strev-amqp",
 ]
 
 [workspace.package]

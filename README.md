@@ -32,6 +32,7 @@ strev-nats = { git = "https://github.com/guiaramos/strev" }      # NATS JetStrea
 strev-kafka = { git = "https://github.com/guiaramos/strev" }     # Apache Kafka
 strev-postgres = { git = "https://github.com/guiaramos/strev" }  # PostgreSQL
 strev-mongodb = { git = "https://github.com/guiaramos/strev" }   # MongoDB
+strev-amqp = { git = "https://github.com/guiaramos/strev" }      # AMQP / RabbitMQ
 strev-telemetry = { git = "https://github.com/guiaramos/strev" } # tracing + metrics
 ```
 
@@ -139,6 +140,7 @@ for a sink, or `add_handler` when a handler also publishes to another topic.
 | Apache Kafka   | `strev-kafka`      | consumer groups, manual offset commits             |
 | PostgreSQL     | `strev-postgres`   | durable table, per-group offsets, pure Rust (sqlx) |
 | MongoDB        | `strev-mongodb`    | change streams, resume tokens (needs replica set)  |
+| AMQP (RabbitMQ)| `strev-amqp`       | durable fanout exchange, a durable queue per group |
 
 `strev-kafka` exposes a `sasl-ssl` feature that enables TLS and SASL for managed brokers,
 and a config passthrough for arbitrary client properties:
@@ -188,6 +190,7 @@ Runnable examples live under each crate's `examples/` directory:
 - `strev-kafka`: `kafka_pubsub`
 - `strev-postgres`: `postgres_pubsub`
 - `strev-mongodb`: `mongodb_pubsub`
+- `strev-amqp`: `amqp_pubsub`
 - `strev-cloudevents`: `router_cloudevents`
 - `strev-telemetry`: `telemetry`
 

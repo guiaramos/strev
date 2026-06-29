@@ -70,3 +70,13 @@ services:
       timeout: 10s
       retries: 12
       start_period: 5s
+
+  rabbitmq:
+    image: rabbitmq:3.13
+    ports:
+      - "5672:5672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
