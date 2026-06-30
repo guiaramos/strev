@@ -122,7 +122,7 @@ impl strev::Subscriber for MongoSubscriber {
     }
 }
 
-fn document_to_message(document: Document) -> Message {
+pub(crate) fn document_to_message(document: Document) -> Message {
     let payload = match document.get("payload") {
         Some(Bson::Binary(binary)) => Bytes::copy_from_slice(&binary.bytes),
         _ => Bytes::new(),
