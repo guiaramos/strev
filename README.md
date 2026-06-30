@@ -194,6 +194,17 @@ Forwarder::register(&mut router, subscriber_in, Arc::new(publisher_out), Forward
 let publisher = ForwarderPublisher::new(Box::new(outbox_publisher)); // app publishes as usual
 ```
 
+A `Requeuer` complements this for operational requeues: it drains one topic (e.g. a
+dead-letter or poison topic) back to a destination chosen by a resolver, optionally after a
+delay, recording attempts in the `requeue-retries` metadata key so the resolver can cap them.
+
+```rust
+RequeuerConfig::new("poison")
+    .delay(Duration::from_secs(1))
+    .destination(|m: &Message| Ok(Topic::new(m.metadata().get("original-topic").unwrap_or("orders"))))
+    .register(&mut router, subscriber, Arc::new(publisher));
+```
+
 ## CQRS
 
 The `strev-cqrs` crate adds typed command/event buses and processors on top of the
@@ -218,7 +229,7 @@ command_processor.register(&mut router);
 
 Runnable examples live under each crate's `examples/` directory:
 
-- `strev`: `basic_pubsub`, `router`, `consumer_groups`, `middleware_chain`, `deduplication`, `poison_queue`, `event_pipeline`, `forwarder`
+- `strev`: `basic_pubsub`, `router`, `consumer_groups`, `middleware_chain`, `deduplication`, `poison_queue`, `event_pipeline`, `forwarder`, `requeuer`
 - `strev-redis`: `redis_pubsub`
 - `strev-nats`: `nats_pubsub`
 - `strev-kafka`: `kafka_pubsub`
