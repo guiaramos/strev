@@ -10,7 +10,7 @@ readme.workspace = true
 [dependencies]
 async-trait = "0.1"
 dashmap = "6"
-strev = { path = "../strev", version = "0.7.0" }
+strev = { path = "../strev", version = "0.8.0" }
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 

@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0](https://github.com/guiaramos/strev/compare/v0.7.0...v0.8.0) - 2026-06-30
+
+### Added
+
+- extend ConsumerLag to more backends and index mongo queue
+- add ConsumerLag capability with postgres and redis support
+- *(strev-nats)* add core NATS at-most-once publisher and subscriber
+- *(strev-kafka)* honor a partition-key metadata for ordering
+- *(strev-postgres)* add publish_tx for the transactional outbox pattern
+- *(strev)* add FanIn and RequestReply components
+- *(strev-mongodb)* add MongoQueueSubscriber with nack redelivery
+- *(strev-kafka)* redeliver nacked messages by seeking the partition
+- *(strev-postgres)* redeliver nacked messages via a per-row lease
+- *(strev)* redeliver nacked messages via an ack-feedback lease
+- *(strev-mongodb)* honor delayed delivery via DelayedPublisher
+- add opt-in delayed delivery via DelayedPublisher
+- *(strev)* add Requeuer to move messages between topics
+- *(strev)* add Forwarder for the outbox/bridge pattern
+
+### Other
+
+- add a bulk throughput conformance scenario for all backends
+- batch acknowledgements in the postgres, redis, and mongo subscribers
+- *(strev-mongodb)* add a per-group cursor to the queue subscriber
+- batch publishes and move postgres advance off the ack path
+- *(strev-channel)* add criterion throughput benchmarks
+- add competing-consumers and lease-timeout conformance coverage
+
 ## [0.6.0](https://github.com/guiaramos/strev/releases/tag/v0.6.0) - 2026-06-22
 
 ### Added
