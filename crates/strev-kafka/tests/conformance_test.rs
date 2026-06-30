@@ -148,3 +148,12 @@ async fn router_with_kafka() {
 
     assert_eq!(processed.load(Ordering::SeqCst), 3);
 }
+
+#[tokio::test]
+async fn conformance_nack_redelivery() {
+    let Some(backend) = backend().await else {
+        eprintln!("skipping: kafka not available");
+        return;
+    };
+    strev_testsuite::nack_redelivery(&backend).await;
+}
