@@ -2,7 +2,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use strev::{CloseError, Message, MessageStream, SubscribeError, Topic};
+use redis::AsyncCommands;
+use strev::{AckReceiver, CloseError, Disposition, Message, MessageStream, SubscribeError, Topic};
 
 use crate::marshaller::{DefaultMarshaller, Marshaller};
 
@@ -64,9 +65,10 @@ impl strev::Subscriber for RedisSubscriber {
 
         tokio::spawn(async move {
             let mut conn = conn;
-            let group = &config.consumer_group;
-            let consumer = &config.consumer_name;
+            let group = config.consumer_group.clone();
+            let consumer = config.consumer_name.clone();
             let block_ms = config.block_duration.as_millis() as usize;
+            let claim_idle_ms = config.claim_idle.as_millis() as usize;
             let count = config.batch_size;
 
             loop {
@@ -76,8 +78,8 @@ impl strev::Subscriber for RedisSubscriber {
 
                 let result: Result<redis::Value, _> = redis::cmd("XREADGROUP")
                     .arg("GROUP")
-                    .arg(group)
-                    .arg(consumer)
+                    .arg(&group)
+                    .arg(&consumer)
                     .arg("COUNT")
                     .arg(count)
                     .arg("BLOCK")
@@ -88,7 +90,7 @@ impl strev::Subscriber for RedisSubscriber {
                     .query_async(&mut conn)
                     .await;
 
-                let entries = match result {
+                let mut entries = match result {
                     Ok(val) => parse_stream_response(val),
                     Err(_) => {
                         tokio::time::sleep(Duration::from_secs(1)).await;
@@ -96,16 +98,23 @@ impl strev::Subscriber for RedisSubscriber {
                     }
                 };
 
+                let claimed: Result<redis::Value, _> = redis::cmd("XAUTOCLAIM")
+                    .arg(&stream_key)
+                    .arg(&group)
+                    .arg(&consumer)
+                    .arg(claim_idle_ms)
+                    .arg("0")
+                    .query_async(&mut conn)
+                    .await;
+                if let Ok(val) = claimed {
+                    entries.extend(parse_claim_response(val));
+                }
+
                 for (entry_id, fields) in entries {
                     let (payload, mut metadata) = match config.marshaller.unmarshal(&fields) {
                         Some(v) => v,
                         None => {
-                            let _: Result<(), _> = redis::cmd("XACK")
-                                .arg(&stream_key)
-                                .arg(group)
-                                .arg(&entry_id)
-                                .query_async(&mut conn)
-                                .await;
+                            xack(&mut conn, &stream_key, &group, &entry_id).await;
                             continue;
                         }
                     };
@@ -113,17 +122,31 @@ impl strev::Subscriber for RedisSubscriber {
                     metadata.set("redis_stream_id", entry_id.clone());
 
                     let msg = Message::with_metadata(payload, metadata);
+                    let retry = msg.copy();
+                    let (leased, ack) = msg.leased();
 
-                    if tx.send(msg).await.is_err() {
+                    if tx.send(leased).await.is_err() {
+                        reenqueue(
+                            &mut conn,
+                            &config.marshaller,
+                            &stream_key,
+                            &group,
+                            &entry_id,
+                            &retry,
+                        )
+                        .await;
                         break;
                     }
 
-                    let _: Result<(), _> = redis::cmd("XACK")
-                        .arg(&stream_key)
-                        .arg(group)
-                        .arg(&entry_id)
-                        .query_async(&mut conn)
-                        .await;
+                    tokio::spawn(resolve_ack(
+                        conn.clone(),
+                        config.marshaller.clone(),
+                        stream_key.clone(),
+                        group.clone(),
+                        entry_id,
+                        retry,
+                        ack,
+                    ));
                 }
             }
         });
@@ -158,12 +181,79 @@ async fn ensure_consumer_group(
     }
 }
 
+async fn xack(conn: &mut redis::aio::MultiplexedConnection, key: &str, group: &str, id: &str) {
+    let _: Result<(), _> = redis::cmd("XACK")
+        .arg(key)
+        .arg(group)
+        .arg(id)
+        .query_async(conn)
+        .await;
+}
+
+/// Republish a message as a new stream entry and clear the original from the pending list,
+/// so a nacked (or undeliverable) message is redelivered immediately rather than waiting for
+/// `XAUTOCLAIM`.
+async fn reenqueue(
+    conn: &mut redis::aio::MultiplexedConnection,
+    marshaller: &Arc<dyn Marshaller>,
+    stream_key: &str,
+    group: &str,
+    entry_id: &str,
+    message: &Message,
+) {
+    let fields = marshaller.marshal(message);
+    let items: Vec<(&str, &[u8])> = fields
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_slice()))
+        .collect();
+    let _: Result<String, _> = conn.xadd(stream_key, "*", &items).await;
+    xack(conn, stream_key, group, entry_id).await;
+}
+
+async fn resolve_ack(
+    mut conn: redis::aio::MultiplexedConnection,
+    marshaller: Arc<dyn Marshaller>,
+    stream_key: String,
+    group: String,
+    entry_id: String,
+    retry: Message,
+    ack: AckReceiver,
+) {
+    match ack.recv().await {
+        Disposition::Ack => {
+            xack(&mut conn, &stream_key, &group, &entry_id).await;
+        }
+        Disposition::Nack => {
+            reenqueue(
+                &mut conn,
+                &marshaller,
+                &stream_key,
+                &group,
+                &entry_id,
+                &retry,
+            )
+            .await;
+        }
+    }
+}
+
+fn parse_claim_response(val: redis::Value) -> Vec<(String, Vec<(String, redis::Value)>)> {
+    let array = match val {
+        redis::Value::Array(array) => array,
+        _ => return Vec::new(),
+    };
+
+    match array.into_iter().nth(1) {
+        Some(messages) => parse_entries(messages),
+        None => Vec::new(),
+    }
+}
+
 fn parse_stream_response(val: redis::Value) -> Vec<(String, Vec<(String, redis::Value)>)> {
     let mut entries = Vec::new();
 
     let streams = match val {
         redis::Value::Array(streams) => streams,
-        redis::Value::Nil => return entries,
         _ => return entries,
     };
 
@@ -173,53 +263,58 @@ fn parse_stream_response(val: redis::Value) -> Vec<(String, Vec<(String, redis::
             _ => continue,
         };
 
-        if stream_arr.len() < 2 {
-            continue;
+        if let Some(messages) = stream_arr.into_iter().nth(1) {
+            entries.extend(parse_entries(messages));
         }
+    }
 
-        let messages = match &stream_arr[1] {
-            redis::Value::Array(msgs) => msgs,
+    entries
+}
+
+fn parse_entries(messages: redis::Value) -> Vec<(String, Vec<(String, redis::Value)>)> {
+    let messages = match messages {
+        redis::Value::Array(messages) => messages,
+        _ => return Vec::new(),
+    };
+
+    let mut entries = Vec::new();
+    for message in messages {
+        let msg_arr = match message {
+            redis::Value::Array(arr) => arr,
             _ => continue,
         };
 
-        for message in messages {
-            let msg_arr = match message {
-                redis::Value::Array(arr) => arr,
-                _ => continue,
-            };
+        if msg_arr.len() < 2 {
+            continue;
+        }
 
-            if msg_arr.len() < 2 {
-                continue;
-            }
+        let entry_id = match &msg_arr[0] {
+            redis::Value::BulkString(b) => String::from_utf8_lossy(b).to_string(),
+            redis::Value::SimpleString(s) => s.clone(),
+            _ => continue,
+        };
 
-            let entry_id = match &msg_arr[0] {
+        let field_arr = match &msg_arr[1] {
+            redis::Value::Array(arr) => arr,
+            _ => continue,
+        };
+
+        let mut fields = Vec::new();
+        let mut i = 0;
+        while i + 1 < field_arr.len() {
+            let key = match &field_arr[i] {
                 redis::Value::BulkString(b) => String::from_utf8_lossy(b).to_string(),
                 redis::Value::SimpleString(s) => s.clone(),
-                _ => continue,
+                _ => {
+                    i += 2;
+                    continue;
+                }
             };
-
-            let field_arr = match &msg_arr[1] {
-                redis::Value::Array(arr) => arr,
-                _ => continue,
-            };
-
-            let mut fields = Vec::new();
-            let mut i = 0;
-            while i + 1 < field_arr.len() {
-                let key = match &field_arr[i] {
-                    redis::Value::BulkString(b) => String::from_utf8_lossy(b).to_string(),
-                    redis::Value::SimpleString(s) => s.clone(),
-                    _ => {
-                        i += 2;
-                        continue;
-                    }
-                };
-                fields.push((key, field_arr[i + 1].clone()));
-                i += 2;
-            }
-
-            entries.push((entry_id, fields));
+            fields.push((key, field_arr[i + 1].clone()));
+            i += 2;
         }
+
+        entries.push((entry_id, fields));
     }
 
     entries

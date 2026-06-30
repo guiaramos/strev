@@ -260,7 +260,7 @@ async fn handler_nack_does_not_produce_messages() {
     token.cancel();
     router_handle.await.unwrap().unwrap();
 
-    assert_eq!(nack_count.load(Ordering::SeqCst), 1);
+    assert!(nack_count.load(Ordering::SeqCst) >= 1);
 
     let next = tokio::time::timeout(Duration::from_millis(100), output_stream.next()).await;
     assert!(next.is_err() || next.unwrap().is_none());

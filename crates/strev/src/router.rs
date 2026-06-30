@@ -8,7 +8,7 @@ use tracing::error;
 use crate::decorator::{PublisherDecorator, SubscriberDecorator};
 use crate::error::RouterError;
 use crate::handler::Handler;
-use crate::message::{Message, Pending};
+use crate::message::{Disposition, Message, Pending};
 use crate::middleware::Middleware;
 use crate::publisher::Publisher;
 use crate::subscriber::Subscriber;
@@ -265,11 +265,22 @@ impl Router {
     async fn process_message(
         handler_name: &str,
         handler: &dyn Handler,
-        msg: Message<Pending>,
+        mut msg: Message<Pending>,
         publisher: Option<&dyn Publisher>,
     ) {
+        let responder = msg.take_ack();
+
         match handler.handle(msg).await {
             Ok(result) => {
+                if let Some(tx) = responder {
+                    let disposition = if result.outcome().is_acked() {
+                        Disposition::Ack
+                    } else {
+                        Disposition::Nack
+                    };
+                    let _ = tx.send(disposition);
+                }
+
                 if !result.produced().is_empty()
                     && let Some(pub_) = publisher
                 {
@@ -294,6 +305,9 @@ impl Router {
                 }
             }
             Err(e) => {
+                if let Some(tx) = responder {
+                    let _ = tx.send(Disposition::Nack);
+                }
                 error!(handler = handler_name, error = %e, "handler error");
             }
         }

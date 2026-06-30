@@ -2,11 +2,32 @@ use std::marker::PhantomData;
 
 use bytes::Bytes;
 use serde::de::DeserializeOwned;
+use tokio::sync::oneshot;
 use uuid::Uuid;
 
 use crate::error::DeserializeError;
 use crate::metadata::Metadata;
 use crate::outcome::Outcome;
+
+/// A consumer's verdict on a delivered message, signalled back to the subscriber that
+/// leased it. A message dropped without an explicit verdict resolves to [`Disposition::Nack`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Disposition {
+    Ack,
+    Nack,
+}
+
+/// Resolves to the consumer's [`Disposition`] once a leased message is acked, nacked, or
+/// dropped. Backends await this to decide whether to commit the ack or redeliver.
+pub struct AckReceiver {
+    inner: oneshot::Receiver<Disposition>,
+}
+
+impl AckReceiver {
+    pub async fn recv(self) -> Disposition {
+        self.inner.await.unwrap_or(Disposition::Nack)
+    }
+}
 
 pub trait AckState: sealed::Sealed {}
 
@@ -30,6 +51,7 @@ pub struct Message<S: AckState = Pending> {
     uuid: Uuid,
     metadata: Metadata,
     payload: Bytes,
+    ack: Option<oneshot::Sender<Disposition>>,
     _state: PhantomData<S>,
 }
 
@@ -39,6 +61,7 @@ impl Message<Pending> {
             uuid: Uuid::new_v4(),
             metadata: Metadata::new(),
             payload,
+            ack: None,
             _state: PhantomData,
         }
     }
@@ -48,15 +71,39 @@ impl Message<Pending> {
             uuid: Uuid::new_v4(),
             metadata,
             payload,
+            ack: None,
             _state: PhantomData,
         }
     }
 
-    pub fn ack(self) -> Outcome {
+    /// Attach an acknowledgement channel, turning this into a leased message. The returned
+    /// [`AckReceiver`] resolves when the consumer acks or nacks it (or to
+    /// [`Disposition::Nack`] if the message is dropped without a verdict). Backends use this
+    /// to defer the transport ack until the handler has run.
+    pub fn leased(mut self) -> (Self, AckReceiver) {
+        let (tx, rx) = oneshot::channel();
+        self.ack = Some(tx);
+        (self, AckReceiver { inner: rx })
+    }
+
+    /// Remove the acknowledgement channel so the caller can resolve it itself. The router
+    /// uses this to take ownership of the verdict before running the middleware chain, so a
+    /// handler's own `ack`/`nack` cannot signal the transport prematurely (e.g. mid-retry).
+    pub(crate) fn take_ack(&mut self) -> Option<oneshot::Sender<Disposition>> {
+        self.ack.take()
+    }
+
+    pub fn ack(mut self) -> Outcome {
+        if let Some(tx) = self.ack.take() {
+            let _ = tx.send(Disposition::Ack);
+        }
         Outcome::acked()
     }
 
-    pub fn nack(self) -> Outcome {
+    pub fn nack(mut self) -> Outcome {
+        if let Some(tx) = self.ack.take() {
+            let _ = tx.send(Disposition::Nack);
+        }
         Outcome::nacked()
     }
 
@@ -85,6 +132,7 @@ impl Message<Pending> {
             uuid: Uuid::new_v4(),
             metadata: self.metadata.clone(),
             payload: self.payload.clone(),
+            ack: None,
             _state: PhantomData,
         }
     }

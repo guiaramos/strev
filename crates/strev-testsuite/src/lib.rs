@@ -98,6 +98,28 @@ pub async fn metadata_fidelity(backend: &dyn Backend) {
     let _ = received.ack();
 }
 
+/// A nacked message is redelivered. Only applies to backends that support redelivery.
+pub async fn nack_redelivery(backend: &dyn Backend) {
+    let topic = unique_topic();
+    let subscriber = backend.subscriber(&unique_group()).await;
+    let mut stream = subscriber.subscribe(&topic).await.expect("subscribe");
+    tokio::time::sleep(backend.warmup()).await;
+
+    let publisher = backend.publisher().await;
+    publisher
+        .publish(&topic, vec![Message::new(Bytes::from("retry-me"))])
+        .await
+        .expect("publish");
+
+    let first = next_message(&mut stream).await;
+    assert_eq!(first.payload().as_ref(), b"retry-me");
+    let _ = first.nack();
+
+    let second = next_message(&mut stream).await;
+    assert_eq!(second.payload().as_ref(), b"retry-me");
+    let _ = second.ack();
+}
+
 /// A new subscriber in the same group resumes after a restart: a message published while
 /// no consumer was attached is still delivered once a consumer rejoins the group. Only
 /// applies to durable backends.
