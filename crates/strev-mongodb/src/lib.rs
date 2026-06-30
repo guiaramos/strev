@@ -7,14 +7,17 @@
 mod delay;
 mod publisher;
 mod queue_subscriber;
+mod retention;
 mod subscriber;
 
 pub use delay::{MongoDelayPromoter, MongoDelayPromoterConfig};
 pub use publisher::{MongoPublisher, MongoPublisherConfig};
 pub use queue_subscriber::{MongoQueueSubscriber, MongoQueueSubscriberConfig};
+pub use retention::{MongoRetention, MongoRetentionConfig};
 pub use subscriber::{MongoSubscriber, MongoSubscriberConfig};
 
 const MESSAGES_COLLECTION: &str = "strev_messages";
 const DELAYED_COLLECTION: &str = "strev_delayed_messages";
 const RESUME_TOKENS_COLLECTION: &str = "strev_resume_tokens";
+const CURSORS_COLLECTION: &str = "strev_cursors";
 const DEFAULT_DATABASE: &str = "strev";
