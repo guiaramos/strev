@@ -3,10 +3,13 @@ use std::time::Duration;
 use async_trait::async_trait;
 use bytes::Bytes;
 use rdkafka::Message as KafkaMessage;
-use rdkafka::consumer::{CommitMode, Consumer, StreamConsumer};
+use rdkafka::consumer::{BaseConsumer, CommitMode, Consumer, StreamConsumer};
 use rdkafka::message::Headers;
 use rdkafka::{ClientConfig, Offset, TopicPartitionList};
-use strev::{CloseError, Disposition, Message, MessageStream, Metadata, SubscribeError, Topic};
+use strev::{
+    CloseError, ConsumerLag, Disposition, LagError, Message, MessageStream, Metadata,
+    SubscribeError, Topic,
+};
 
 pub struct KafkaSubscriberConfig {
     pub brokers: String,
@@ -138,5 +141,60 @@ impl strev::Subscriber for KafkaSubscriber {
 
     async fn close(&mut self) -> Result<(), CloseError> {
         Ok(())
+    }
+}
+
+#[async_trait]
+impl ConsumerLag for KafkaSubscriber {
+    async fn lag(&self, topic: &Topic) -> Result<u64, LagError> {
+        let brokers = self.config.brokers.clone();
+        let group_id = self.config.group_id.clone();
+        let options = self.config.options.clone();
+        let topic_name = topic.as_str().to_string();
+
+        let lag = tokio::task::spawn_blocking(move || -> Result<i64, LagError> {
+            let mut client_config = ClientConfig::new();
+            client_config
+                .set("bootstrap.servers", &brokers)
+                .set("group.id", &group_id)
+                .set("enable.auto.commit", "false");
+            for (key, value) in &options {
+                client_config.set(key, value);
+            }
+            let consumer: BaseConsumer = client_config.create()?;
+
+            let timeout = Duration::from_secs(5);
+            let metadata = consumer.fetch_metadata(Some(&topic_name), timeout)?;
+
+            let mut partitions = TopicPartitionList::new();
+            for meta_topic in metadata.topics() {
+                if meta_topic.name() == topic_name {
+                    for partition in meta_topic.partitions() {
+                        partitions.add_partition(&topic_name, partition.id());
+                    }
+                }
+            }
+            if partitions.count() == 0 {
+                return Ok(0);
+            }
+
+            let committed = consumer.committed_offsets(partitions, timeout)?;
+
+            let mut lag = 0i64;
+            for element in committed.elements() {
+                let (low, high) =
+                    consumer.fetch_watermarks(&topic_name, element.partition(), timeout)?;
+                let consumed = match element.offset() {
+                    Offset::Offset(offset) => offset,
+                    _ => low,
+                };
+                lag += (high - consumed).max(0);
+            }
+            Ok(lag)
+        })
+        .await
+        .map_err(|e| Box::new(e) as LagError)??;
+
+        Ok(lag as u64)
     }
 }

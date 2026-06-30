@@ -157,3 +157,35 @@ async fn conformance_nack_redelivery() {
     };
     strev_testsuite::nack_redelivery(&backend).await;
 }
+
+#[tokio::test]
+async fn conformance_competing_consumers() {
+    let Some(backend) = backend().await else {
+        eprintln!("skipping: kafka not available");
+        return;
+    };
+    strev_testsuite::competing_consumers(&backend).await;
+}
+
+#[tokio::test]
+async fn reports_consumer_lag() {
+    use strev::ConsumerLag;
+
+    let Some(backend) = backend().await else {
+        eprintln!("skipping: kafka not available");
+        return;
+    };
+    let topic = Topic::new(format!("lag-{}", uuid::Uuid::new_v4().simple()));
+
+    let publisher = backend.publisher().await;
+    let messages = (0..5)
+        .map(|i| Message::new(Bytes::from(format!("m-{i}"))))
+        .collect();
+    publisher.publish(&topic, messages).await.unwrap();
+    tokio::time::sleep(Duration::from_secs(3)).await;
+
+    let subscriber =
+        KafkaSubscriber::new(KafkaSubscriberConfig::new(&backend.brokers, "lag-group"));
+    let lag = subscriber.lag(&topic).await.unwrap();
+    assert!((1..=5).contains(&lag), "unexpected lag: {lag}");
+}
