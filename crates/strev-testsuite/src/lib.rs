@@ -56,6 +56,45 @@ pub async fn roundtrip(backend: &dyn Backend) {
     let _ = message.ack();
 }
 
+/// A large batch published in one call is fully delivered and acked, exercising the
+/// batched publish/delivery/ack paths end to end.
+pub async fn throughput(backend: &dyn Backend) {
+    let topic = unique_topic();
+    let subscriber = backend.subscriber(&unique_group()).await;
+    let mut stream = subscriber.subscribe(&topic).await.expect("subscribe");
+    tokio::time::sleep(backend.warmup()).await;
+
+    let count = 1000usize;
+    let publisher = backend.publisher().await;
+    let publish_topic = topic.clone();
+
+    // Publish concurrently with consuming: in-process backends (channel) apply backpressure
+    // on bounded buffers, so publishing the whole batch before consuming would deadlock.
+    let producer = tokio::spawn(async move {
+        let messages = (0..count)
+            .map(|i| Message::new(Bytes::from(format!("m-{i}"))))
+            .collect();
+        publisher.publish(&publish_topic, messages).await
+    });
+
+    let mut received = 0usize;
+    while received < count {
+        match tokio::time::timeout(Duration::from_secs(30), stream.next()).await {
+            Ok(Some(message)) => {
+                received += 1;
+                let _ = message.ack();
+            }
+            _ => break,
+        }
+    }
+
+    let _ = producer.await;
+    assert_eq!(
+        received, count,
+        "every published message should be delivered"
+    );
+}
+
 /// Messages published to a topic are delivered in publication order.
 pub async fn ordering(backend: &dyn Backend) {
     let topic = unique_topic();

@@ -43,3 +43,8 @@ async fn conformance_metadata() {
 async fn conformance_nack_redelivery() {
     strev_testsuite::nack_redelivery(&backend()).await;
 }
+
+#[tokio::test]
+async fn conformance_throughput() {
+    strev_testsuite::throughput(&backend()).await;
+}

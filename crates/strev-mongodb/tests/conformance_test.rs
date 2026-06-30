@@ -136,3 +136,12 @@ async fn router_with_mongodb() {
 
     assert_eq!(processed.load(Ordering::SeqCst), 3);
 }
+
+#[tokio::test]
+async fn conformance_throughput() {
+    let Some(backend) = backend().await else {
+        eprintln!("skipping: backend not available");
+        return;
+    };
+    strev_testsuite::throughput(&backend).await;
+}
