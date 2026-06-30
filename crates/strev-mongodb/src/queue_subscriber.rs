@@ -3,10 +3,14 @@ use std::time::{Duration, SystemTime};
 
 use async_trait::async_trait;
 use mongodb::Client;
+use mongodb::IndexModel;
 use mongodb::bson::oid::ObjectId;
 use mongodb::bson::{DateTime, Document, doc};
 use mongodb::options::ReturnDocument;
-use strev::{AckReceiver, CloseError, Disposition, MessageStream, SubscribeError, Topic};
+use strev::{
+    AckReceiver, CloseError, ConsumerLag, Disposition, LagError, MessageStream, SubscribeError,
+    Topic,
+};
 
 use crate::subscriber::document_to_message;
 use crate::{DEFAULT_DATABASE, MESSAGES_COLLECTION};
@@ -73,6 +77,17 @@ impl strev::Subscriber for MongoQueueSubscriber {
             .database(&config.database)
             .collection(MESSAGES_COLLECTION);
 
+        // Index the claim/lag access pattern: filter by topic, ordered by _id. Without this
+        // the per-poll find/count is a full collection scan, unworkable at high volume.
+        collection
+            .create_index(
+                IndexModel::builder()
+                    .keys(doc! { "topic": 1, "_id": 1 })
+                    .build(),
+            )
+            .await
+            .map_err(|e| SubscribeError::Backend(Box::new(e)))?;
+
         let (sender, stream) = MessageStream::channel(config.buffer_size);
         let key = group_key(&config.consumer_group);
 
@@ -116,6 +131,28 @@ impl strev::Subscriber for MongoQueueSubscriber {
 
     async fn close(&mut self) -> Result<(), CloseError> {
         Ok(())
+    }
+}
+
+#[async_trait]
+impl ConsumerLag for MongoQueueSubscriber {
+    async fn lag(&self, topic: &Topic) -> Result<u64, LagError> {
+        let collection: mongodb::Collection<Document> = self
+            .config
+            .client
+            .database(&self.config.database)
+            .collection(MESSAGES_COLLECTION);
+        let key = group_key(&self.config.consumer_group);
+
+        let filter = doc! {
+            "topic": topic.as_str(),
+            "$or": [
+                { format!("consumed.{key}"): { "$exists": false } },
+                { format!("consumed.{key}.acked"): false },
+            ],
+        };
+
+        Ok(collection.count_documents(filter).await?)
     }
 }
 

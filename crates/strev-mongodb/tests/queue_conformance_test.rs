@@ -97,3 +97,26 @@ async fn conformance_competing_consumers() {
     };
     strev_testsuite::competing_consumers(&backend).await;
 }
+
+#[tokio::test]
+async fn reports_consumer_lag() {
+    use bytes::Bytes;
+    use strev::{ConsumerLag, Message, Publisher, Topic};
+    use strev_mongodb::{MongoQueueSubscriber, MongoQueueSubscriberConfig};
+    use uuid::Uuid;
+
+    let Some(backend) = backend().await else {
+        return;
+    };
+    let topic = Topic::new(format!("lag-{}", Uuid::new_v4()));
+
+    let subscriber =
+        MongoQueueSubscriber::new(MongoQueueSubscriberConfig::new(backend.client.clone(), "g"));
+    let publisher = backend.publisher().await;
+    let messages = (0..5)
+        .map(|i| Message::new(Bytes::from(format!("m-{i}"))))
+        .collect();
+    publisher.publish(&topic, messages).await.unwrap();
+
+    assert_eq!(subscriber.lag(&topic).await.unwrap(), 5);
+}

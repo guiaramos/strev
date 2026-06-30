@@ -5,7 +5,10 @@ use async_nats::jetstream::AckKind;
 use async_nats::jetstream::consumer::PullConsumer;
 use async_trait::async_trait;
 use futures::StreamExt;
-use strev::{CloseError, Disposition, Message, MessageStream, Metadata, SubscribeError, Topic};
+use strev::{
+    CloseError, ConsumerLag, Disposition, LagError, Message, MessageStream, Metadata,
+    SubscribeError, Topic,
+};
 
 pub struct NatsSubscriberConfig {
     pub client: async_nats::Client,
@@ -135,5 +138,31 @@ impl strev::Subscriber for NatsSubscriber {
 
     async fn close(&mut self) -> Result<(), CloseError> {
         Ok(())
+    }
+}
+
+#[async_trait]
+impl ConsumerLag for NatsSubscriber {
+    async fn lag(&self, topic: &Topic) -> Result<u64, LagError> {
+        let jetstream = jetstream::new(self.config.client.clone());
+
+        let stream = match jetstream.get_stream(&self.config.stream_name).await {
+            Ok(stream) => stream,
+            Err(_) => return Ok(0),
+        };
+
+        let consumer_name = format!(
+            "{}-{}",
+            self.config.consumer_prefix,
+            topic.as_str().replace('.', "-")
+        );
+
+        let mut consumer: PullConsumer = match stream.get_consumer(&consumer_name).await {
+            Ok(consumer) => consumer,
+            Err(_) => return Ok(0),
+        };
+
+        let info = consumer.info().await?;
+        Ok(info.num_pending + info.num_ack_pending as u64)
     }
 }
