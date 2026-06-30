@@ -207,6 +207,18 @@ Forwarder::register(&mut router, subscriber_in, Arc::new(publisher_out), Forward
 let publisher = ForwarderPublisher::new(Box::new(outbox_publisher)); // app publishes as usual
 ```
 
+With `strev-postgres` this becomes a true transactional outbox: `PostgresPublisher::publish_tx`
+inserts the message inside a transaction you already hold, so it commits atomically with your
+business writes (or is rolled back with them), and a normal `PostgresSubscriber` delivers it
+once committed.
+
+```rust
+let mut tx = pool.begin().await?;
+// ... your business writes on &mut tx ...
+publisher.publish_tx(&mut tx, &topic, vec![message]).await?;
+tx.commit().await?; // message and business data commit together
+```
+
 A `Requeuer` complements this for operational requeues: it drains one topic (e.g. a
 dead-letter or poison topic) back to a destination chosen by a resolver, optionally after a
 delay, recording attempts in the `requeue-retries` metadata key so the resolver can cap them.
