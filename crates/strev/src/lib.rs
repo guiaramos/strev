@@ -13,6 +13,7 @@ mod error;
 mod fanin;
 mod forwarder;
 mod handler;
+mod lag;
 mod message;
 mod metadata;
 pub mod middleware;
@@ -36,6 +37,7 @@ pub use error::{
 pub use fanin::{FanIn, FanInConfig};
 pub use forwarder::{Forwarder, ForwarderConfig, ForwarderPublisher};
 pub use handler::{Handler, HandlerResult, ProducedMessage, passthrough};
+pub use lag::{ConsumerLag, LagError};
 pub use message::{AckReceiver, AckState, Acked, Disposition, Message, Nacked, Pending};
 pub use metadata::Metadata;
 pub use middleware::Middleware;

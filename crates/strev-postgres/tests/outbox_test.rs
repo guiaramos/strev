@@ -118,3 +118,38 @@ async fn lease_timeout_reclaims_unacked_message() {
     assert_eq!(second.payload().as_ref(), b"hold-me");
     let _ = second.ack();
 }
+
+#[tokio::test]
+async fn reports_consumer_lag() {
+    use strev::ConsumerLag;
+
+    let Some(pool) = pg_pool().await else {
+        return;
+    };
+    let topic = Topic::new(format!("lag-{}", Uuid::new_v4()));
+
+    let subscriber = PostgresSubscriber::new(PostgresSubscriberConfig::new(pool.clone(), "g"));
+    let mut stream = subscriber.subscribe(&topic).await.unwrap();
+
+    let publisher = PostgresPublisher::new(PostgresPublisherConfig::new(pool.clone()))
+        .await
+        .unwrap();
+    let messages = (0..5)
+        .map(|i| Message::new(Bytes::from(format!("m-{i}"))))
+        .collect();
+    publisher.publish(&topic, messages).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    assert_eq!(subscriber.lag(&topic).await.unwrap(), 5);
+
+    for _ in 0..5 {
+        let msg = tokio::time::timeout(Duration::from_secs(3), stream.next())
+            .await
+            .expect("timeout")
+            .expect("stream ended");
+        let _ = msg.ack();
+    }
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    assert_eq!(subscriber.lag(&topic).await.unwrap(), 0);
+}

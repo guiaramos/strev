@@ -187,6 +187,9 @@ order. Built-in middleware:
 The `strev-telemetry` crate adds a `Telemetry` middleware that emits a `tracing` span per
 message plus `metrics` facade measurements (handler-duration histogram, acked/nacked/
 errored counters), so you can wire strev into any tracing/metrics exporter you already use.
+It also offers `report_consumer_lag`, which periodically records the `strev_consumer_lag`
+gauge for backends that implement the `ConsumerLag` trait (currently `strev-postgres` and
+`strev-redis`), for autoscaling and alerting.
 
 ## Decorators and CloudEvents
 
