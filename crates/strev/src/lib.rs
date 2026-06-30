@@ -8,6 +8,7 @@
 //! Backends live in companion crates: `strev-channel`, `strev-redis`, `strev-nats`, and
 //! `strev-kafka`. CloudEvents enveloping lives in `strev-cloudevents`.
 pub mod decorator;
+mod delay;
 mod error;
 mod forwarder;
 mod handler;
@@ -26,6 +27,7 @@ pub use decorator::{
     MessageTransformPublisherDecorator, MessageTransformSubscriberDecorator, PublisherDecorator,
     SubscriberDecorator,
 };
+pub use delay::{Delay, DelayedPublisher};
 pub use error::{
     CloseError, DeserializeError, HandlerError, PublishError, RouterError, SubscribeError,
 };

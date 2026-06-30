@@ -1,7 +1,9 @@
+use std::time::UNIX_EPOCH;
+
 use async_trait::async_trait;
 use serde_json::{Map, Value};
 use sqlx::PgPool;
-use strev::{CloseError, Message, Outcome, PublishError, Topic};
+use strev::{CloseError, Delay, DelayedPublisher, Message, Outcome, PublishError, Topic};
 
 use crate::schema::ensure_schema;
 
@@ -63,6 +65,49 @@ impl strev::Publisher for PostgresPublisher {
 
     async fn close(&mut self) -> Result<(), CloseError> {
         Ok(())
+    }
+}
+
+#[async_trait]
+impl DelayedPublisher for PostgresPublisher {
+    async fn publish_after(
+        &self,
+        topic: &Topic,
+        messages: Vec<Message>,
+        delay: Delay,
+    ) -> Result<Vec<Outcome>, PublishError> {
+        let deliver_after = delay
+            .not_before()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs_f64())
+            .unwrap_or(0.0);
+
+        let mut outcomes = Vec::with_capacity(messages.len());
+
+        for msg in messages {
+            let metadata = metadata_to_json(&msg);
+
+            let result = sqlx::query(
+                "INSERT INTO strev_delayed_messages (topic, uuid, payload, metadata, deliver_after) VALUES ($1, $2, $3, $4, to_timestamp($5))",
+            )
+            .bind(topic.as_str())
+            .bind(msg.uuid().to_string())
+            .bind(msg.payload().as_ref())
+            .bind(Value::Object(metadata))
+            .bind(deliver_after)
+            .execute(&self.pool)
+            .await;
+
+            match result {
+                Ok(_) => outcomes.push(msg.ack()),
+                Err(e) => {
+                    let _ = msg.nack();
+                    return Err(PublishError::Backend(Box::new(e)));
+                }
+            }
+        }
+
+        Ok(outcomes)
     }
 }
 

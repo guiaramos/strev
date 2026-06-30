@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use redis::AsyncCommands;
-use strev::{CloseError, Message, Outcome, PublishError, Topic};
+use strev::{CloseError, Delay, DelayedPublisher, Message, Outcome, PublishError, Topic};
 
+use crate::delay::{DELAYED_TOPICS_SET, delayed_zset_key, due_millis, encode};
 use crate::marshaller::{DefaultMarshaller, Marshaller};
 
 pub struct RedisPublisherConfig {
@@ -91,5 +92,48 @@ impl strev::Publisher for RedisPublisher {
 
     async fn close(&mut self) -> Result<(), CloseError> {
         Ok(())
+    }
+}
+
+#[async_trait]
+impl DelayedPublisher for RedisPublisher {
+    async fn publish_after(
+        &self,
+        topic: &Topic,
+        messages: Vec<Message>,
+        delay: Delay,
+    ) -> Result<Vec<Outcome>, PublishError> {
+        let mut conn = self.conn.clone();
+        let key = delayed_zset_key(topic.as_str());
+        let score = due_millis(delay);
+        let mut outcomes = Vec::with_capacity(messages.len());
+
+        for msg in messages {
+            let member = match encode(&msg) {
+                Ok(member) => member,
+                Err(e) => {
+                    let _ = msg.nack();
+                    return Err(PublishError::Backend(Box::new(e)));
+                }
+            };
+
+            let registered: Result<i64, redis::RedisError> =
+                conn.sadd(DELAYED_TOPICS_SET, topic.as_str()).await;
+            if let Err(e) = registered {
+                let _ = msg.nack();
+                return Err(PublishError::Backend(Box::new(e)));
+            }
+
+            let staged: Result<i64, redis::RedisError> = conn.zadd(&key, &member, score).await;
+            match staged {
+                Ok(_) => outcomes.push(msg.ack()),
+                Err(e) => {
+                    let _ = msg.nack();
+                    return Err(PublishError::Backend(Box::new(e)));
+                }
+            }
+        }
+
+        Ok(outcomes)
     }
 }
