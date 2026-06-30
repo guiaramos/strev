@@ -116,7 +116,7 @@ async fn router_with_amqp() {
     let tc = token.clone();
     let handle = tokio::spawn(async move { router.run(ShutdownSignal::Token(tc)).await });
 
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    tokio::time::sleep(Duration::from_secs(2)).await;
 
     let publisher = AmqpPublisher::new(AmqpPublisherConfig::new(&uri))
         .await
@@ -131,7 +131,12 @@ async fn router_with_amqp() {
         .unwrap();
     }
 
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    for _ in 0..80 {
+        if processed.load(Ordering::SeqCst) >= 3 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
     token.cancel();
     handle.await.unwrap().unwrap();
 
