@@ -224,9 +224,10 @@ tokio::spawn(async move { promoter.run(shutdown).await });
 
 | Backend | Staging | Promoter |
 |---------|---------|----------|
-| `strev-channel`  | in-process timer task        | none (delivers itself when due) |
+| `strev-channel`  | in-process timer task         | none (delivers itself when due) |
 | `strev-redis`    | sorted set scored by due-time | `RedisDelayPromoter` |
 | `strev-postgres` | `deliver_after` column        | `PostgresDelayPromoter` (single atomic claim-and-insert) |
+| `strev-mongodb`  | `deliver_after` collection    | `MongoDelayPromoter` (moves due docs into the watched collection) |
 
 Run one promoter for exactly-once promotion, or several for high availability (delivery is
 then at-least-once; pair with the `Deduplicator` middleware).
