@@ -9,8 +9,8 @@ use dashmap::DashMap;
 use tokio::sync::mpsc;
 
 use strev::{
-    CloseError, Delay, DelayedPublisher, Message, MessageStream, Outcome, PublishError, Publisher,
-    SubscribeError, Subscriber, Topic,
+    CloseError, Delay, DelayedPublisher, Disposition, Message, MessageStream, Outcome,
+    PublishError, Publisher, SubscribeError, Subscriber, Topic,
 };
 
 #[derive(Clone)]
@@ -110,8 +110,41 @@ impl DelayedPublisher for Channel {
 #[async_trait]
 impl Subscriber for Channel {
     async fn subscribe(&self, topic: &Topic) -> Result<MessageStream, SubscribeError> {
-        let (tx, stream) = MessageStream::channel(self.inner.buffer_size);
-        self.inner.topics.entry(topic.clone()).or_default().push(tx);
+        let (raw_tx, mut raw_rx) = mpsc::channel(self.inner.buffer_size);
+        self.inner
+            .topics
+            .entry(topic.clone())
+            .or_default()
+            .push(raw_tx.clone());
+
+        let reenqueue = raw_tx.downgrade();
+        drop(raw_tx);
+
+        let (out_tx, stream) = MessageStream::channel(self.inner.buffer_size);
+
+        tokio::spawn(async move {
+            while let Some(raw) = raw_rx.recv().await {
+                if out_tx.is_closed() {
+                    break;
+                }
+
+                let retry = raw.copy();
+                let (msg, ack) = raw.leased();
+                if out_tx.send(msg).await.is_err() {
+                    break;
+                }
+
+                let reenqueue = reenqueue.clone();
+                tokio::spawn(async move {
+                    if let Disposition::Nack = ack.recv().await
+                        && let Some(tx) = reenqueue.upgrade()
+                    {
+                        let _ = tx.send(retry).await;
+                    }
+                });
+            }
+        });
+
         Ok(stream)
     }
 

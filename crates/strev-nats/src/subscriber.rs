@@ -1,10 +1,11 @@
 use std::time::Duration;
 
 use async_nats::jetstream;
+use async_nats::jetstream::AckKind;
 use async_nats::jetstream::consumer::PullConsumer;
 use async_trait::async_trait;
 use futures::StreamExt;
-use strev::{CloseError, Message, MessageStream, Metadata, SubscribeError, Topic};
+use strev::{CloseError, Disposition, Message, MessageStream, Metadata, SubscribeError, Topic};
 
 pub struct NatsSubscriberConfig {
     pub client: async_nats::Client,
@@ -104,13 +105,22 @@ impl strev::Subscriber for NatsSubscriber {
                             }
                         }
 
-                        let msg = Message::with_metadata(payload, metadata);
+                        let (msg, ack) = Message::with_metadata(payload, metadata).leased();
 
                         if tx.send(msg).await.is_err() {
                             break;
                         }
 
-                        let _ = jetstream_msg.ack().await;
+                        tokio::spawn(async move {
+                            match ack.recv().await {
+                                Disposition::Ack => {
+                                    let _ = jetstream_msg.ack().await;
+                                }
+                                Disposition::Nack => {
+                                    let _ = jetstream_msg.ack_with(AckKind::Nak(None)).await;
+                                }
+                            }
+                        });
                     }
                     Some(Err(_)) => {
                         tokio::time::sleep(Duration::from_millis(500)).await;

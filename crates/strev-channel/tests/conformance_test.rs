@@ -38,3 +38,8 @@ async fn conformance_ordering() {
 async fn conformance_metadata() {
     strev_testsuite::metadata_fidelity(&backend()).await;
 }
+
+#[tokio::test]
+async fn conformance_nack_redelivery() {
+    strev_testsuite::nack_redelivery(&backend()).await;
+}

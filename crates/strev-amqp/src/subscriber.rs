@@ -5,11 +5,11 @@ use bytes::Bytes;
 use futures::StreamExt;
 use lapin::ExchangeKind;
 use lapin::options::{
-    BasicAckOptions, BasicConsumeOptions, BasicQosOptions, ExchangeDeclareOptions,
-    QueueBindOptions, QueueDeclareOptions,
+    BasicAckOptions, BasicConsumeOptions, BasicNackOptions, BasicQosOptions,
+    ExchangeDeclareOptions, QueueBindOptions, QueueDeclareOptions,
 };
 use lapin::types::{AMQPValue, FieldTable};
-use strev::{CloseError, Message, MessageStream, Metadata, SubscribeError, Topic};
+use strev::{CloseError, Disposition, Message, MessageStream, Metadata, SubscribeError, Topic};
 
 use crate::connect;
 
@@ -126,11 +126,25 @@ impl strev::Subscriber for AmqpSubscriber {
                                 }
                             }
 
-                            let msg = Message::with_metadata(payload, metadata);
+                            let (msg, ack) = Message::with_metadata(payload, metadata).leased();
                             if tx.send(msg).await.is_err() {
                                 break;
                             }
-                            let _ = delivery.ack(BasicAckOptions::default()).await;
+                            tokio::spawn(async move {
+                                match ack.recv().await {
+                                    Disposition::Ack => {
+                                        let _ = delivery.ack(BasicAckOptions::default()).await;
+                                    }
+                                    Disposition::Nack => {
+                                        let _ = delivery
+                                            .nack(BasicNackOptions {
+                                                requeue: true,
+                                                ..Default::default()
+                                            })
+                                            .await;
+                                    }
+                                }
+                            });
                         }
                         Some(Err(_)) => {
                             tokio::time::sleep(Duration::from_millis(500)).await;

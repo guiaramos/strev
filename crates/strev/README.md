@@ -131,6 +131,15 @@ pub trait Subscriber: Send + Sync {
 and runs every consumer concurrently until a shutdown signal fires. Use `add_consumer`
 for a sink, or `add_handler` when a handler also publishes to another topic.
 
+**Acknowledgement and redelivery.** A subscriber leases each delivered message and waits
+for the handler's verdict before settling it with the transport. Acking commits it; nacking
+(or a handler error or panic, which counts as a nack) redelivers it on backends that
+support redelivery. The verdict is taken by the router before the middleware chain runs, so
+a handler's `ack`/`nack` never settles the transport mid-retry. Redelivery is available on
+`strev-channel`, `strev-redis` (pending-list plus `XAUTOCLAIM` crash recovery),
+`strev-nats`, and `strev-amqp`. `strev-postgres` and `strev-mongodb` are currently
+at-least-once on delivery but do not yet redeliver on nack.
+
 ## Backends
 
 | Transport      | Crate              | Notes                                              |

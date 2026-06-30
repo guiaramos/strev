@@ -95,3 +95,30 @@ async fn channel_clone_shares_state() {
     assert_eq!(received.payload().as_ref(), b"from_clone");
     let _ = received.ack();
 }
+
+#[tokio::test]
+async fn nack_redelivers_message() {
+    use std::time::Duration;
+
+    let channel = Channel::new(16);
+    let topic = Topic::new("retry");
+
+    let mut stream = Subscriber::subscribe(&channel, &topic).await.unwrap();
+    Publisher::publish(&channel, &topic, vec![Message::new(Bytes::from("payload"))])
+        .await
+        .unwrap();
+
+    let first = tokio::time::timeout(Duration::from_secs(2), stream.next())
+        .await
+        .expect("timeout")
+        .expect("stream ended");
+    assert_eq!(first.payload().as_ref(), b"payload");
+    let _ = first.nack();
+
+    let second = tokio::time::timeout(Duration::from_secs(2), stream.next())
+        .await
+        .expect("timeout")
+        .expect("stream ended");
+    assert_eq!(second.payload().as_ref(), b"payload");
+    let _ = second.ack();
+}

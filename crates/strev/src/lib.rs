@@ -33,7 +33,7 @@ pub use error::{
 };
 pub use forwarder::{Forwarder, ForwarderConfig, ForwarderPublisher};
 pub use handler::{Handler, HandlerResult, ProducedMessage, passthrough};
-pub use message::{AckState, Acked, Message, Nacked, Pending};
+pub use message::{AckReceiver, AckState, Acked, Disposition, Message, Nacked, Pending};
 pub use metadata::Metadata;
 pub use middleware::Middleware;
 pub use outcome::Outcome;
