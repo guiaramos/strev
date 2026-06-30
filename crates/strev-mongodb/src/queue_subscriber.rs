@@ -12,9 +12,8 @@ use strev::{CloseError, ConsumerLag, Disposition, LagError, MessageStream, Subsc
 use tokio::sync::mpsc;
 
 use crate::subscriber::document_to_message;
-use crate::{DEFAULT_DATABASE, MESSAGES_COLLECTION};
+use crate::{CURSORS_COLLECTION, DEFAULT_DATABASE, MESSAGES_COLLECTION};
 
-const CURSORS_COLLECTION: &str = "strev_cursors";
 const ADVANCE_SCAN_LIMIT: i64 = 1000;
 const MAX_ACK_BATCH: usize = 500;
 const VERDICT_BUFFER: usize = 4096;
@@ -252,7 +251,7 @@ async fn advance_cursor(
         cursors
             .update_one(
                 doc! { "_id": cursor_id(key, topic) },
-                doc! { "$set": { "cursor": new_cursor } },
+                doc! { "$set": { "cursor": new_cursor, "topic": topic } },
             )
             .upsert(true)
             .await?;

@@ -129,3 +129,58 @@ async fn conformance_throughput() {
     };
     strev_testsuite::throughput(&backend).await;
 }
+
+#[tokio::test]
+async fn retention_purges_consumed_messages() {
+    use std::time::Duration;
+
+    use bytes::Bytes;
+    use strev::{Message, Publisher, Subscriber, Topic};
+    use strev_mongodb::{
+        MongoQueueSubscriber, MongoQueueSubscriberConfig, MongoRetention, MongoRetentionConfig,
+    };
+    use tokio_stream::StreamExt;
+    use uuid::Uuid;
+
+    let Some(backend) = backend().await else {
+        return;
+    };
+    let topic = Topic::new(format!("retain-{}", Uuid::new_v4()));
+
+    let subscriber =
+        MongoQueueSubscriber::new(MongoQueueSubscriberConfig::new(backend.client.clone(), "g"));
+    let mut stream = subscriber.subscribe(&topic).await.unwrap();
+
+    let publisher = backend.publisher().await;
+    let messages = (0..5)
+        .map(|i| Message::new(Bytes::from(format!("m-{i}"))))
+        .collect();
+    publisher.publish(&topic, messages).await.unwrap();
+
+    for _ in 0..5 {
+        let msg = tokio::time::timeout(Duration::from_secs(3), stream.next())
+            .await
+            .expect("timeout")
+            .expect("stream ended");
+        let _ = msg.ack();
+    }
+    // Let the cursor advance over the acked prefix.
+    tokio::time::sleep(Duration::from_millis(800)).await;
+
+    let retention = MongoRetention::new(MongoRetentionConfig::new(backend.client.clone()));
+    let token = tokio_util::sync::CancellationToken::new();
+    let tc = token.clone();
+    let handle = tokio::spawn(async move { retention.run(tc).await });
+    tokio::time::sleep(Duration::from_millis(800)).await;
+    token.cancel();
+    handle.await.unwrap();
+
+    let remaining = backend
+        .client
+        .database("strev")
+        .collection::<mongodb::bson::Document>("strev_messages")
+        .count_documents(mongodb::bson::doc! { "topic": topic.as_str() })
+        .await
+        .unwrap();
+    assert_eq!(remaining, 0, "consumed messages should be purged");
+}
