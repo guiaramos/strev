@@ -8,16 +8,16 @@ use mongodb::IndexModel;
 use mongodb::bson::oid::ObjectId;
 use mongodb::bson::{DateTime, Document, doc};
 use mongodb::options::ReturnDocument;
-use strev::{
-    AckReceiver, CloseError, ConsumerLag, Disposition, LagError, MessageStream, SubscribeError,
-    Topic,
-};
+use strev::{CloseError, ConsumerLag, Disposition, LagError, MessageStream, SubscribeError, Topic};
+use tokio::sync::mpsc;
 
 use crate::subscriber::document_to_message;
 use crate::{DEFAULT_DATABASE, MESSAGES_COLLECTION};
 
 const CURSORS_COLLECTION: &str = "strev_cursors";
 const ADVANCE_SCAN_LIMIT: i64 = 1000;
+const MAX_ACK_BATCH: usize = 500;
+const VERDICT_BUFFER: usize = 4096;
 
 /// The smallest ObjectId, used as the initial cursor (deliver from the very beginning).
 fn min_object_id() -> ObjectId {
@@ -105,6 +105,9 @@ impl strev::Subscriber for MongoQueueSubscriber {
         let (sender, stream) = MessageStream::channel(config.buffer_size);
         let key = group_key(&config.consumer_group);
 
+        let (verdict_tx, verdict_rx) = mpsc::channel::<(ObjectId, Disposition)>(VERDICT_BUFFER);
+        tokio::spawn(ack_flusher(collection.clone(), key.clone(), verdict_rx));
+
         tokio::spawn(async move {
             loop {
                 if sender.is_closed() {
@@ -142,7 +145,11 @@ impl strev::Subscriber for MongoQueueSubscriber {
                         return;
                     }
 
-                    tokio::spawn(resolve_ack(collection.clone(), id, key.clone(), ack));
+                    let verdict_tx = verdict_tx.clone();
+                    tokio::spawn(async move {
+                        let disposition = ack.recv().await;
+                        let _ = verdict_tx.send((id, disposition)).await;
+                    });
                     delivered += 1;
                 }
 
@@ -285,23 +292,47 @@ async fn claim_one(
         .await
 }
 
-async fn resolve_ack(
+/// Drain verdicts and settle them in batched updateMany calls: one for all acks and one for
+/// all nack-expiries, instead of a round-trip per message. Bursts are coalesced via
+/// `try_recv` up to [`MAX_ACK_BATCH`].
+async fn ack_flusher(
     collection: mongodb::Collection<Document>,
-    id: ObjectId,
     key: String,
-    ack: AckReceiver,
+    mut verdicts: mpsc::Receiver<(ObjectId, Disposition)>,
 ) {
-    match ack.recv().await {
-        Disposition::Ack => {
+    while let Some((id, disposition)) = verdicts.recv().await {
+        let mut acks: Vec<ObjectId> = Vec::new();
+        let mut nacks: Vec<ObjectId> = Vec::new();
+        match disposition {
+            Disposition::Ack => acks.push(id),
+            Disposition::Nack => nacks.push(id),
+        }
+
+        while acks.len() + nacks.len() < MAX_ACK_BATCH {
+            match verdicts.try_recv() {
+                Ok((id, Disposition::Ack)) => acks.push(id),
+                Ok((id, Disposition::Nack)) => nacks.push(id),
+                Err(_) => break,
+            }
+        }
+
+        if !acks.is_empty() {
             let _ = collection
-                .update_one(
-                    doc! { "_id": id },
+                .update_many(
+                    doc! { "_id": { "$in": acks } },
                     doc! { "$set": { format!("consumed.{key}.acked"): true } },
                 )
                 .await;
         }
-        Disposition::Nack => {
-            expire_lease(&collection, id, &key).await;
+
+        if !nacks.is_empty() {
+            let past = DateTime::from_system_time(SystemTime::now() - Duration::from_secs(1));
+            let _ = collection
+                .update_many(
+                    doc! { "_id": { "$in": nacks }, format!("consumed.{key}.acked"): false },
+                    doc! { "$set": { format!("consumed.{key}.locked_until"): past } },
+                )
+                .await;
         }
     }
 }

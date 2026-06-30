@@ -6,12 +6,16 @@ use bytes::Bytes;
 use serde_json::Value;
 use sqlx::{PgPool, Row};
 use strev::{
-    AckReceiver, CloseError, ConsumerLag, Disposition, LagError, Message, MessageStream, Metadata,
+    CloseError, ConsumerLag, Disposition, LagError, Message, MessageStream, Metadata,
     SubscribeError, Topic,
 };
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::{self, Sender};
 
 use crate::schema::ensure_schema;
+
+/// Verdicts buffered before a flush, and the channel depth feeding the flusher.
+const MAX_ACK_BATCH: usize = 500;
+const VERDICT_BUFFER: usize = 4096;
 
 pub struct PostgresSubscriberConfig {
     pub pool: PgPool,
@@ -67,6 +71,14 @@ impl strev::Subscriber for PostgresSubscriber {
         .map_err(|e| SubscribeError::Backend(Box::new(e)))?;
 
         let (sender, stream) = MessageStream::channel(config.buffer_size);
+        let (verdict_tx, verdict_rx) = mpsc::channel::<(i64, Disposition)>(VERDICT_BUFFER);
+
+        tokio::spawn(ack_flusher(
+            config.pool.clone(),
+            config.consumer_group.clone(),
+            topic.clone(),
+            verdict_rx,
+        ));
 
         tokio::spawn(async move {
             loop {
@@ -74,7 +86,7 @@ impl strev::Subscriber for PostgresSubscriber {
                     break;
                 }
 
-                match poll_once(&config, &topic, &sender).await {
+                match poll_once(&config, &topic, &sender, &verdict_tx).await {
                     Ok(count) if count > 0 => continue,
                     _ => tokio::time::sleep(config.poll_interval).await,
                 }
@@ -140,6 +152,7 @@ async fn poll_once(
     config: &PostgresSubscriberConfig,
     topic: &str,
     sender: &Sender<Message>,
+    verdicts: &Sender<(i64, Disposition)>,
 ) -> Result<usize, sqlx::Error> {
     let mut tx = config.pool.begin().await?;
 
@@ -201,52 +214,64 @@ async fn poll_once(
             return Ok(0);
         }
 
-        tokio::spawn(resolve_ack(
-            config.pool.clone(),
-            config.consumer_group.clone(),
-            topic.to_string(),
-            id,
-            ack,
-        ));
+        // Forward the verdict to the flusher, which batches the database writes.
+        let verdicts = verdicts.clone();
+        tokio::spawn(async move {
+            let disposition = ack.recv().await;
+            let _ = verdicts.send((id, disposition)).await;
+        });
     }
 
     Ok(count)
 }
 
-async fn resolve_ack(
+/// Drain verdicts and apply them in batched updates: one statement per flush for all acks
+/// and one for all nacks, instead of a round-trip per message. Bursts are coalesced via
+/// `try_recv` up to [`MAX_ACK_BATCH`].
+async fn ack_flusher(
     pool: PgPool,
     group: String,
     topic: String,
-    message_id: i64,
-    ack: AckReceiver,
+    mut verdicts: mpsc::Receiver<(i64, Disposition)>,
 ) {
-    match ack.recv().await {
-        Disposition::Ack => {
-            let _ = mark_acked(&pool, &group, &topic, message_id).await;
+    while let Some((id, disposition)) = verdicts.recv().await {
+        let mut acks = Vec::new();
+        let mut nacks = Vec::new();
+        match disposition {
+            Disposition::Ack => acks.push(id),
+            Disposition::Nack => nacks.push(id),
         }
-        Disposition::Nack => {
-            expire_lease(&pool, &group, &topic, message_id).await;
+
+        while acks.len() + nacks.len() < MAX_ACK_BATCH {
+            match verdicts.try_recv() {
+                Ok((id, Disposition::Ack)) => acks.push(id),
+                Ok((id, Disposition::Nack)) => nacks.push(id),
+                Err(_) => break,
+            }
+        }
+
+        if !acks.is_empty() {
+            let _ = sqlx::query(
+                "UPDATE strev_consume SET acked = true WHERE consumer_group = $1 AND topic = $2 AND message_id = ANY($3)",
+            )
+            .bind(&group)
+            .bind(&topic)
+            .bind(&acks)
+            .execute(&pool)
+            .await;
+        }
+
+        if !nacks.is_empty() {
+            let _ = sqlx::query(
+                "UPDATE strev_consume SET locked_until = now() - interval '1 second' WHERE consumer_group = $1 AND topic = $2 AND message_id = ANY($3) AND NOT acked",
+            )
+            .bind(&group)
+            .bind(&topic)
+            .bind(&nacks)
+            .execute(&pool)
+            .await;
         }
     }
-}
-
-/// Mark a message acked. Cheap single-row update on the high-throughput ack path; the
-/// watermark advance and pruning happen once per poll in [`advance_watermark`].
-async fn mark_acked(
-    pool: &PgPool,
-    group: &str,
-    topic: &str,
-    message_id: i64,
-) -> Result<(), sqlx::Error> {
-    sqlx::query(
-        "UPDATE strev_consume SET acked = true WHERE consumer_group = $1 AND topic = $2 AND message_id = $3",
-    )
-    .bind(group)
-    .bind(topic)
-    .bind(message_id)
-    .execute(pool)
-    .await?;
-    Ok(())
 }
 
 /// Advance the offset over the contiguous acked prefix of this topic's messages and prune

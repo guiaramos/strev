@@ -4,11 +4,15 @@ use std::time::Duration;
 use async_trait::async_trait;
 use redis::AsyncCommands;
 use strev::{
-    AckReceiver, CloseError, ConsumerLag, Disposition, LagError, Message, MessageStream,
-    SubscribeError, Topic,
+    CloseError, ConsumerLag, Disposition, LagError, Message, MessageStream, SubscribeError, Topic,
 };
+use tokio::sync::mpsc;
 
 use crate::marshaller::{DefaultMarshaller, Marshaller};
+
+/// Verdicts buffered before a flush, and the channel depth feeding the flusher.
+const MAX_ACK_BATCH: usize = 500;
+const VERDICT_BUFFER: usize = 4096;
 
 pub struct RedisSubscriberConfig {
     pub client: redis::Client,
@@ -65,6 +69,16 @@ impl strev::Subscriber for RedisSubscriber {
         ensure_consumer_group(&conn, &stream_key, &config.consumer_group)
             .await
             .map_err(|e| SubscribeError::Backend(Box::new(e)))?;
+
+        let (verdict_tx, verdict_rx) =
+            mpsc::channel::<(String, Disposition, Message)>(VERDICT_BUFFER);
+        tokio::spawn(ack_flusher(
+            conn.clone(),
+            config.marshaller.clone(),
+            stream_key.clone(),
+            config.consumer_group.clone(),
+            verdict_rx,
+        ));
 
         tokio::spawn(async move {
             let mut conn = conn;
@@ -141,15 +155,11 @@ impl strev::Subscriber for RedisSubscriber {
                         break;
                     }
 
-                    tokio::spawn(resolve_ack(
-                        conn.clone(),
-                        config.marshaller.clone(),
-                        stream_key.clone(),
-                        group.clone(),
-                        entry_id,
-                        retry,
-                        ack,
-                    ));
+                    let verdict_tx = verdict_tx.clone();
+                    tokio::spawn(async move {
+                        let disposition = ack.recv().await;
+                        let _ = verdict_tx.send((entry_id, disposition, retry)).await;
+                    });
                 }
             }
         });
@@ -281,29 +291,58 @@ async fn reenqueue(
     xack(conn, stream_key, group, entry_id).await;
 }
 
-async fn resolve_ack(
+/// Drain verdicts and settle them in batches: one `XACK` for all acks (and nacked
+/// originals), with nacked payloads re-enqueued via a single pipeline, instead of a
+/// round-trip per message. Bursts are coalesced via `try_recv` up to [`MAX_ACK_BATCH`].
+async fn ack_flusher(
     mut conn: redis::aio::MultiplexedConnection,
     marshaller: Arc<dyn Marshaller>,
     stream_key: String,
     group: String,
-    entry_id: String,
-    retry: Message,
-    ack: AckReceiver,
+    mut verdicts: mpsc::Receiver<(String, Disposition, Message)>,
 ) {
-    match ack.recv().await {
-        Disposition::Ack => {
-            xack(&mut conn, &stream_key, &group, &entry_id).await;
+    while let Some((id, disposition, retry)) = verdicts.recv().await {
+        let mut ack_ids: Vec<String> = Vec::new();
+        let mut reenqueue_msgs: Vec<Message> = Vec::new();
+
+        match disposition {
+            Disposition::Ack => ack_ids.push(id),
+            Disposition::Nack => {
+                reenqueue_msgs.push(retry);
+                ack_ids.push(id);
+            }
         }
-        Disposition::Nack => {
-            reenqueue(
-                &mut conn,
-                &marshaller,
-                &stream_key,
-                &group,
-                &entry_id,
-                &retry,
-            )
-            .await;
+
+        while ack_ids.len() < MAX_ACK_BATCH {
+            match verdicts.try_recv() {
+                Ok((id, Disposition::Ack, _)) => ack_ids.push(id),
+                Ok((id, Disposition::Nack, retry)) => {
+                    reenqueue_msgs.push(retry);
+                    ack_ids.push(id);
+                }
+                Err(_) => break,
+            }
+        }
+
+        if !reenqueue_msgs.is_empty() {
+            let mut pipe = redis::pipe();
+            for msg in &reenqueue_msgs {
+                let fields = marshaller.marshal(msg);
+                let command = pipe.cmd("XADD").arg(&stream_key).arg("*");
+                for (key, value) in &fields {
+                    command.arg(key.as_str()).arg(value.as_slice());
+                }
+            }
+            let _: Result<Vec<redis::Value>, _> = pipe.query_async(&mut conn).await;
+        }
+
+        if !ack_ids.is_empty() {
+            let _: Result<i64, _> = redis::cmd("XACK")
+                .arg(&stream_key)
+                .arg(&group)
+                .arg(&ack_ids)
+                .query_async(&mut conn)
+                .await;
         }
     }
 }
