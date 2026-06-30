@@ -15,6 +15,7 @@ serde_json = "1"
 sqlx = { version = "0.8", default-features = false, features = ["postgres", "runtime-tokio", "json"] }
 strev = { path = "../strev", version = "0.7.0" }
 tokio = { version = "1", features = ["sync", "time"] }
+tokio-util = "0.7"
 tracing = "0.1"
 
 [dev-dependencies]

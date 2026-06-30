@@ -205,6 +205,32 @@ RequeuerConfig::new("poison")
     .register(&mut router, subscriber, Arc::new(publisher));
 ```
 
+## Delayed delivery
+
+Withholding a message until a future instant is an opt-in backend capability, not a core
+guarantee. Only backends that can actually enforce it implement the `DelayedPublisher`
+trait, so `publish_after` on a backend that cannot delay is a compile error rather than a
+silent no-op. The pattern is the same everywhere: `publish_after` stages the message, and a
+promoter moves it into the live topic once it is due, leaving the normal subscriber path
+untouched.
+
+```rust
+publisher.publish_after(&Topic::new("orders"), messages, Delay::after(Duration::from_secs(30))).await?;
+
+// run a promoter to move due messages into their live topics
+let promoter = RedisDelayPromoter::new(RedisDelayPromoterConfig::new(client)).await?;
+tokio::spawn(async move { promoter.run(shutdown).await });
+```
+
+| Backend | Staging | Promoter |
+|---------|---------|----------|
+| `strev-channel`  | in-process timer task        | none (delivers itself when due) |
+| `strev-redis`    | sorted set scored by due-time | `RedisDelayPromoter` |
+| `strev-postgres` | `deliver_after` column        | `PostgresDelayPromoter` (single atomic claim-and-insert) |
+
+Run one promoter for exactly-once promotion, or several for high availability (delivery is
+then at-least-once; pair with the `Deduplicator` middleware).
+
 ## CQRS
 
 The `strev-cqrs` crate adds typed command/event buses and processors on top of the

@@ -19,6 +19,17 @@ const OFFSETS_DDL: &str = "CREATE TABLE IF NOT EXISTS strev_offsets (
     PRIMARY KEY (consumer_group, topic)
 )";
 
+const DELAYED_DDL: &str = "CREATE TABLE IF NOT EXISTS strev_delayed_messages (
+    id BIGSERIAL PRIMARY KEY,
+    topic TEXT NOT NULL,
+    uuid TEXT NOT NULL,
+    payload BYTEA NOT NULL,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    deliver_after TIMESTAMPTZ NOT NULL
+)";
+
+const DELAYED_INDEX_DDL: &str = "CREATE INDEX IF NOT EXISTS strev_delayed_messages_due ON strev_delayed_messages (deliver_after)";
+
 const SCHEMA_LOCK_KEY: i64 = 0x_7374_7265_7600;
 
 pub(crate) async fn ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
@@ -30,6 +41,8 @@ pub(crate) async fn ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
     sqlx::query(MESSAGES_DDL).execute(&mut *tx).await?;
     sqlx::query(MESSAGES_INDEX_DDL).execute(&mut *tx).await?;
     sqlx::query(OFFSETS_DDL).execute(&mut *tx).await?;
+    sqlx::query(DELAYED_DDL).execute(&mut *tx).await?;
+    sqlx::query(DELAYED_INDEX_DDL).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(())
 }

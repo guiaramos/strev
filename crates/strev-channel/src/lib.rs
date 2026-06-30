@@ -9,8 +9,8 @@ use dashmap::DashMap;
 use tokio::sync::mpsc;
 
 use strev::{
-    CloseError, Message, MessageStream, Outcome, PublishError, Publisher, SubscribeError,
-    Subscriber, Topic,
+    CloseError, Delay, DelayedPublisher, Message, MessageStream, Outcome, PublishError, Publisher,
+    SubscribeError, Subscriber, Topic,
 };
 
 #[derive(Clone)]
@@ -73,6 +73,37 @@ impl Publisher for Channel {
     async fn close(&mut self) -> Result<(), CloseError> {
         self.inner.topics.clear();
         Ok(())
+    }
+}
+
+#[async_trait]
+impl DelayedPublisher for Channel {
+    async fn publish_after(
+        &self,
+        topic: &Topic,
+        messages: Vec<Message>,
+        delay: Delay,
+    ) -> Result<Vec<Outcome>, PublishError> {
+        let remaining = delay.remaining();
+        if remaining.is_zero() {
+            return self.publish(topic, messages).await;
+        }
+
+        let mut outcomes = Vec::with_capacity(messages.len());
+        let mut delayed = Vec::with_capacity(messages.len());
+        for msg in messages {
+            delayed.push(msg.copy());
+            outcomes.push(msg.ack());
+        }
+
+        let channel = self.clone();
+        let topic = topic.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(remaining).await;
+            let _ = channel.publish(&topic, delayed).await;
+        });
+
+        Ok(outcomes)
     }
 }
 
