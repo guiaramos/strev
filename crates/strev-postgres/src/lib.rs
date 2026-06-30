@@ -6,9 +6,11 @@
 //! consumers in the same group never process the same message twice.
 mod delay;
 mod publisher;
+mod retention;
 mod schema;
 mod subscriber;
 
 pub use delay::{PostgresDelayPromoter, PostgresDelayPromoterConfig};
 pub use publisher::{PostgresPublisher, PostgresPublisherConfig};
+pub use retention::{PostgresRetention, PostgresRetentionConfig};
 pub use subscriber::{PostgresSubscriber, PostgresSubscriberConfig};
