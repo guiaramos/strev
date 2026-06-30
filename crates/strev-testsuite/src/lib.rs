@@ -120,6 +120,47 @@ pub async fn nack_redelivery(backend: &dyn Backend) {
     let _ = second.ack();
 }
 
+/// With two subscribers in the same group, each message is delivered to exactly one of them
+/// (consumer-group load balancing, no duplicates). Only applies to backends with group
+/// semantics, not fan-out backends like the in-memory channel.
+pub async fn competing_consumers(backend: &dyn Backend) {
+    let topic = unique_topic();
+    let group = unique_group();
+
+    let sub_a = backend.subscriber(&group).await;
+    let sub_b = backend.subscriber(&group).await;
+    let a = sub_a.subscribe(&topic).await.expect("subscribe a");
+    let b = sub_b.subscribe(&topic).await.expect("subscribe b");
+    tokio::time::sleep(backend.warmup()).await;
+
+    let publisher = backend.publisher().await;
+    let count = 10usize;
+    let messages = (0..count)
+        .map(|i| Message::new(Bytes::from(format!("m-{i}"))))
+        .collect();
+    publisher.publish(&topic, messages).await.expect("publish");
+
+    let mut merged = a.merge(b);
+    let mut received = Vec::new();
+    while received.len() < count {
+        match tokio::time::timeout(Duration::from_secs(10), merged.next()).await {
+            Ok(Some(message)) => {
+                received.push(String::from_utf8_lossy(message.payload()).to_string());
+                let _ = message.ack();
+            }
+            _ => break,
+        }
+    }
+
+    received.sort();
+    received.dedup();
+    assert_eq!(
+        received.len(),
+        count,
+        "every message must be delivered exactly once across the group"
+    );
+}
+
 /// A new subscriber in the same group resumes after a restart: a message published while
 /// no consumer was attached is still delivered once a consumer rejoins the group. Only
 /// applies to durable backends.

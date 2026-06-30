@@ -3,7 +3,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
-use strev::{Message, Subscriber, Topic};
+use strev::{Message, Publisher, Subscriber, Topic};
 use strev_postgres::{
     PostgresPublisher, PostgresPublisherConfig, PostgresSubscriber, PostgresSubscriberConfig,
 };
@@ -81,4 +81,40 @@ async fn rolled_back_outbox_message_is_not_delivered() {
 
     let result = tokio::time::timeout(Duration::from_secs(1), stream.next()).await;
     assert!(result.is_err(), "rolled-back message must not be delivered");
+}
+
+#[tokio::test]
+async fn lease_timeout_reclaims_unacked_message() {
+    let Some(pool) = pg_pool().await else {
+        return;
+    };
+    let topic = Topic::new(format!("lease-{}", Uuid::new_v4()));
+
+    let mut config = PostgresSubscriberConfig::new(pool.clone(), "g");
+    config.visibility_timeout = Duration::from_millis(500);
+    config.poll_interval = Duration::from_millis(50);
+    let subscriber = PostgresSubscriber::new(config);
+    let mut stream = subscriber.subscribe(&topic).await.unwrap();
+
+    let publisher = PostgresPublisher::new(PostgresPublisherConfig::new(pool.clone()))
+        .await
+        .unwrap();
+    publisher
+        .publish(&topic, vec![Message::new(Bytes::from("hold-me"))])
+        .await
+        .unwrap();
+
+    let first = tokio::time::timeout(Duration::from_secs(3), stream.next())
+        .await
+        .expect("timeout")
+        .expect("stream ended");
+    assert_eq!(first.payload().as_ref(), b"hold-me");
+    // Hold `first` without acking: the lease must expire and the message be re-claimed.
+
+    let second = tokio::time::timeout(Duration::from_secs(3), stream.next())
+        .await
+        .expect("timeout: lease was not reclaimed")
+        .expect("stream ended");
+    assert_eq!(second.payload().as_ref(), b"hold-me");
+    let _ = second.ack();
 }
