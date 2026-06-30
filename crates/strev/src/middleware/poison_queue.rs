@@ -40,8 +40,10 @@ impl Handler for PoisonQueueHandler {
                 let mut poison_meta = metadata;
                 poison_meta.set("poison_error", e.to_string());
                 let poison_msg = Message::with_metadata(payload, poison_meta);
-                let _ = self.publisher.publish(&self.topic, vec![poison_msg]).await;
-                Err(e)
+                match self.publisher.publish(&self.topic, vec![poison_msg]).await {
+                    Ok(_) => Ok(HandlerResult::empty_ack()),
+                    Err(_) => Err(e),
+                }
             }
         }
     }

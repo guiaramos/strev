@@ -442,3 +442,66 @@ async fn handler_error_does_not_crash_router() {
     assert!(results.contains(&"good_1".to_string()));
     assert!(results.contains(&"good_2".to_string()));
 }
+
+#[tokio::test]
+async fn poison_queue_stops_redelivery() {
+    use strev::middleware::PoisonQueue;
+
+    let channel = Channel::new(64);
+    let attempts = Arc::new(AtomicU32::new(0));
+
+    let mut router = Router::new();
+    let counter = attempts.clone();
+    router
+        .add_consumer(
+            "failing",
+            Topic::new("work"),
+            channel.clone(),
+            move |_: Message| {
+                let counter = counter.clone();
+                async move {
+                    counter.fetch_add(1, Ordering::SeqCst);
+                    Err(HandlerError::Processing("always fails".into()))
+                }
+            },
+        )
+        .with_middleware(PoisonQueue {
+            topic: Topic::new("poison"),
+            publisher: Arc::new(channel.clone()),
+        });
+
+    let mut poison = Subscriber::subscribe(&channel, &Topic::new("poison"))
+        .await
+        .unwrap();
+
+    let token = CancellationToken::new();
+    let tc = token.clone();
+    let handle = tokio::spawn(async move { router.run(ShutdownSignal::Token(tc)).await });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    Publisher::publish(
+        &channel,
+        &Topic::new("work"),
+        vec![Message::new(Bytes::from("p"))],
+    )
+    .await
+    .unwrap();
+
+    let dead = tokio::time::timeout(Duration::from_secs(2), poison.next())
+        .await
+        .expect("timeout")
+        .expect("stream ended");
+    assert_eq!(dead.payload().as_ref(), b"p");
+    assert_eq!(dead.metadata().get("poison_error"), Some("always fails"));
+    let _ = dead.ack();
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    token.cancel();
+    handle.await.unwrap().unwrap();
+
+    assert_eq!(
+        attempts.load(Ordering::SeqCst),
+        1,
+        "must not redeliver after dead-lettering"
+    );
+}
