@@ -7,6 +7,11 @@ use rdkafka::producer::{FutureProducer, FutureRecord};
 use rdkafka::util::Timeout;
 use strev::{CloseError, Message, Outcome, PublishError, Topic};
 
+/// Metadata key whose value, if present, is used as the Kafka record key, controlling
+/// partitioning. Messages sharing a partition key land on the same partition and are
+/// therefore delivered in order. Absent it, the message UUID is used (random distribution).
+pub const PARTITION_KEY: &str = "partition-key";
+
 pub struct KafkaPublisherConfig {
     pub brokers: String,
     pub message_timeout: Duration,
@@ -77,9 +82,10 @@ impl strev::Publisher for KafkaPublisher {
                 value: Some(&uuid),
             });
 
+            let key = msg.metadata().get(PARTITION_KEY).unwrap_or(uuid.as_str());
             let record = FutureRecord::to(topic_name)
                 .payload(payload.as_ref())
-                .key(&uuid)
+                .key(key)
                 .headers(headers);
 
             match self.producer.send(record, Timeout::Never).await {
