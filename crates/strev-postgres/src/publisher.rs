@@ -28,6 +28,43 @@ impl PostgresPublisher {
             .map_err(|e| PublishError::Backend(Box::new(e)))?;
         Ok(Self { pool: config.pool })
     }
+
+    /// Publish within a caller-supplied connection, typically an open transaction
+    /// (`&mut *tx`). The messages are inserted in that transaction, so they commit
+    /// atomically with the caller's other writes - the transactional outbox pattern. A normal
+    /// [`PostgresSubscriber`](crate::PostgresSubscriber) then delivers them once committed.
+    pub async fn publish_tx(
+        &self,
+        conn: &mut sqlx::PgConnection,
+        topic: &Topic,
+        messages: Vec<Message>,
+    ) -> Result<Vec<Outcome>, PublishError> {
+        let mut outcomes = Vec::with_capacity(messages.len());
+
+        for msg in messages {
+            let metadata = metadata_to_json(&msg);
+
+            let result = sqlx::query(
+                "INSERT INTO strev_messages (topic, uuid, payload, metadata) VALUES ($1, $2, $3, $4)",
+            )
+            .bind(topic.as_str())
+            .bind(msg.uuid().to_string())
+            .bind(msg.payload().as_ref())
+            .bind(Value::Object(metadata))
+            .execute(&mut *conn)
+            .await;
+
+            match result {
+                Ok(_) => outcomes.push(msg.ack()),
+                Err(e) => {
+                    let _ = msg.nack();
+                    return Err(PublishError::Backend(Box::new(e)));
+                }
+            }
+        }
+
+        Ok(outcomes)
+    }
 }
 
 #[async_trait]
