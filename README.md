@@ -150,7 +150,7 @@ lease on each message document and redelivers on nack or timeout.
 |----------------|--------------------|----------------------------------------------------|
 | In-memory      | `strev-channel`    | single process, ideal for tests and local dev      |
 | Redis Streams  | `strev-redis`      | consumer groups, pluggable marshaller              |
-| NATS JetStream | `strev-nats`       | durable pull consumers, headers as metadata        |
+| NATS JetStream | `strev-nats`       | durable pull consumers + redelivery; core NATS at-most-once with queue groups |
 | Apache Kafka   | `strev-kafka`      | consumer groups, deferred commit, seek-based redelivery |
 | PostgreSQL     | `strev-postgres`   | durable table, per-row leases with redelivery, pure Rust (sqlx) |
 | MongoDB        | `strev-mongodb`    | change streams + resume tokens, or a polling queue mode with redelivery |
