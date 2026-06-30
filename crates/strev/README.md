@@ -245,6 +245,27 @@ tokio::spawn(async move { promoter.run(shutdown).await });
 Run one promoter for exactly-once promotion, or several for high availability (delivery is
 then at-least-once; pair with the `Deduplicator` middleware).
 
+## Fan-in and request-reply
+
+`FanIn` multiplexes several source topics onto one target topic, so a single handler can
+drain many sources (or bridge backends):
+
+```rust
+FanIn::register(&mut router, subscriber, Arc::new(publisher),
+    FanInConfig::new(vec![Topic::new("orders"), Topic::new("payments")], Topic::new("all")));
+```
+
+`RequestReply` adds RPC over pub/sub: a request is tagged with a correlation id and a
+reply-to topic, and a single listener routes replies back to the waiting caller.
+
+```rust
+RequestReply::respond(&mut router, "uppercase", Topic::new("rpc"), subscriber, Arc::new(publisher),
+    |req: Message| async move { Ok(Bytes::from(/* reply */)) });
+
+let client = RequestReply::new(Arc::new(publisher), &subscriber, Topic::new("replies")).await?;
+let reply = client.request(&Topic::new("rpc"), Message::new(payload), Duration::from_secs(5)).await?;
+```
+
 ## CQRS
 
 The `strev-cqrs` crate adds typed command/event buses and processors on top of the
@@ -269,7 +290,7 @@ command_processor.register(&mut router);
 
 Runnable examples live under each crate's `examples/` directory:
 
-- `strev`: `basic_pubsub`, `router`, `consumer_groups`, `middleware_chain`, `deduplication`, `poison_queue`, `event_pipeline`, `forwarder`, `requeuer`
+- `strev`: `basic_pubsub`, `router`, `consumer_groups`, `middleware_chain`, `deduplication`, `poison_queue`, `event_pipeline`, `forwarder`, `requeuer`, `fanin`, `request_reply`
 - `strev-redis`: `redis_pubsub`
 - `strev-nats`: `nats_pubsub`
 - `strev-kafka`: `kafka_pubsub`
