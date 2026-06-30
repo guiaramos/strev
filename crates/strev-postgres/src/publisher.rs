@@ -2,10 +2,14 @@ use std::time::UNIX_EPOCH;
 
 use async_trait::async_trait;
 use serde_json::{Map, Value};
-use sqlx::PgPool;
+use sqlx::{PgPool, Postgres, QueryBuilder};
 use strev::{CloseError, Delay, DelayedPublisher, Message, Outcome, PublishError, Topic};
 
 use crate::schema::ensure_schema;
+
+/// Rows per multi-row INSERT. Keeps bind parameters well under Postgres's 65535 cap while
+/// amortizing round-trips for high publish rates.
+const INSERT_CHUNK: usize = 1000;
 
 pub struct PostgresPublisherConfig {
     pub pool: PgPool,
@@ -39,31 +43,15 @@ impl PostgresPublisher {
         topic: &Topic,
         messages: Vec<Message>,
     ) -> Result<Vec<Outcome>, PublishError> {
-        let mut outcomes = Vec::with_capacity(messages.len());
-
-        for msg in messages {
-            let metadata = metadata_to_json(&msg);
-
-            let result = sqlx::query(
-                "INSERT INTO strev_messages (topic, uuid, payload, metadata) VALUES ($1, $2, $3, $4)",
-            )
-            .bind(topic.as_str())
-            .bind(msg.uuid().to_string())
-            .bind(msg.payload().as_ref())
-            .bind(Value::Object(metadata))
-            .execute(&mut *conn)
-            .await;
-
-            match result {
-                Ok(_) => outcomes.push(msg.ack()),
-                Err(e) => {
-                    let _ = msg.nack();
-                    return Err(PublishError::Backend(Box::new(e)));
-                }
+        let mut failure = None;
+        for chunk in messages.chunks(INSERT_CHUNK) {
+            let mut builder = build_messages_insert(topic.as_str(), chunk);
+            if let Err(e) = builder.build().execute(&mut *conn).await {
+                failure = Some(e);
+                break;
             }
         }
-
-        Ok(outcomes)
+        settle(messages, failure)
     }
 }
 
@@ -74,30 +62,15 @@ impl strev::Publisher for PostgresPublisher {
         topic: &Topic,
         messages: Vec<Message>,
     ) -> Result<Vec<Outcome>, PublishError> {
-        let mut outcomes = Vec::with_capacity(messages.len());
-
-        for msg in messages {
-            let metadata = metadata_to_json(&msg);
-
-            let result =
-                sqlx::query("INSERT INTO strev_messages (topic, uuid, payload, metadata) VALUES ($1, $2, $3, $4)")
-                    .bind(topic.as_str())
-                    .bind(msg.uuid().to_string())
-                    .bind(msg.payload().as_ref())
-                    .bind(Value::Object(metadata))
-                    .execute(&self.pool)
-                    .await;
-
-            match result {
-                Ok(_) => outcomes.push(msg.ack()),
-                Err(e) => {
-                    let _ = msg.nack();
-                    return Err(PublishError::Backend(Box::new(e)));
-                }
+        let mut failure = None;
+        for chunk in messages.chunks(INSERT_CHUNK) {
+            let mut builder = build_messages_insert(topic.as_str(), chunk);
+            if let Err(e) = builder.build().execute(&self.pool).await {
+                failure = Some(e);
+                break;
             }
         }
-
-        Ok(outcomes)
+        settle(messages, failure)
     }
 
     async fn close(&mut self) -> Result<(), CloseError> {
@@ -119,32 +92,63 @@ impl DelayedPublisher for PostgresPublisher {
             .map(|d| d.as_secs_f64())
             .unwrap_or(0.0);
 
-        let mut outcomes = Vec::with_capacity(messages.len());
-
-        for msg in messages {
-            let metadata = metadata_to_json(&msg);
-
-            let result = sqlx::query(
-                "INSERT INTO strev_delayed_messages (topic, uuid, payload, metadata, deliver_after) VALUES ($1, $2, $3, $4, to_timestamp($5))",
-            )
-            .bind(topic.as_str())
-            .bind(msg.uuid().to_string())
-            .bind(msg.payload().as_ref())
-            .bind(Value::Object(metadata))
-            .bind(deliver_after)
-            .execute(&self.pool)
-            .await;
-
-            match result {
-                Ok(_) => outcomes.push(msg.ack()),
-                Err(e) => {
-                    let _ = msg.nack();
-                    return Err(PublishError::Backend(Box::new(e)));
-                }
+        let mut failure = None;
+        for chunk in messages.chunks(INSERT_CHUNK) {
+            let mut builder = build_delayed_insert(topic.as_str(), chunk, deliver_after);
+            if let Err(e) = builder.build().execute(&self.pool).await {
+                failure = Some(e);
+                break;
             }
         }
+        settle(messages, failure)
+    }
+}
 
-        Ok(outcomes)
+fn build_messages_insert<'a>(topic: &'a str, chunk: &'a [Message]) -> QueryBuilder<'a, Postgres> {
+    let mut builder =
+        QueryBuilder::new("INSERT INTO strev_messages (topic, uuid, payload, metadata) ");
+    builder.push_values(chunk, |mut b, msg| {
+        b.push_bind(topic)
+            .push_bind(msg.uuid().to_string())
+            .push_bind(msg.payload().to_vec())
+            .push_bind(Value::Object(metadata_to_json(msg)));
+    });
+    builder
+}
+
+fn build_delayed_insert<'a>(
+    topic: &'a str,
+    chunk: &'a [Message],
+    deliver_after: f64,
+) -> QueryBuilder<'a, Postgres> {
+    let mut builder = QueryBuilder::new(
+        "INSERT INTO strev_delayed_messages (topic, uuid, payload, metadata, deliver_after) ",
+    );
+    builder.push_values(chunk, |mut b, msg| {
+        b.push_bind(topic)
+            .push_bind(msg.uuid().to_string())
+            .push_bind(msg.payload().to_vec())
+            .push_bind(Value::Object(metadata_to_json(msg)))
+            .push("to_timestamp(")
+            .push_bind_unseparated(deliver_after)
+            .push_unseparated(")");
+    });
+    builder
+}
+
+/// Ack every message on success, or nack every message and return the error.
+fn settle(
+    messages: Vec<Message>,
+    failure: Option<sqlx::Error>,
+) -> Result<Vec<Outcome>, PublishError> {
+    match failure {
+        None => Ok(messages.into_iter().map(Message::ack).collect()),
+        Some(e) => {
+            for msg in messages {
+                let _ = msg.nack();
+            }
+            Err(PublishError::Backend(Box::new(e)))
+        }
     }
 }
 

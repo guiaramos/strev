@@ -49,21 +49,16 @@ impl strev::Publisher for MongoPublisher {
         topic: &Topic,
         messages: Vec<Message>,
     ) -> Result<Vec<Outcome>, PublishError> {
-        let mut outcomes = Vec::with_capacity(messages.len());
-
-        for msg in messages {
-            let document = message_document(topic, &msg);
-
-            match self.collection.insert_one(document).await {
-                Ok(_) => outcomes.push(msg.ack()),
-                Err(e) => {
-                    let _ = msg.nack();
-                    return Err(PublishError::Backend(Box::new(e)));
-                }
-            }
+        if messages.is_empty() {
+            return Ok(Vec::new());
         }
 
-        Ok(outcomes)
+        let documents: Vec<Document> = messages
+            .iter()
+            .map(|msg| message_document(topic, msg))
+            .collect();
+
+        settle(messages, self.collection.insert_many(documents).await.err())
     }
 
     async fn close(&mut self) -> Result<(), CloseError> {
@@ -79,23 +74,37 @@ impl DelayedPublisher for MongoPublisher {
         messages: Vec<Message>,
         delay: Delay,
     ) -> Result<Vec<Outcome>, PublishError> {
-        let deliver_after = DateTime::from_system_time(delay.not_before());
-        let mut outcomes = Vec::with_capacity(messages.len());
-
-        for msg in messages {
-            let mut document = message_document(topic, &msg);
-            document.insert("deliver_after", deliver_after);
-
-            match self.delayed.insert_one(document).await {
-                Ok(_) => outcomes.push(msg.ack()),
-                Err(e) => {
-                    let _ = msg.nack();
-                    return Err(PublishError::Backend(Box::new(e)));
-                }
-            }
+        if messages.is_empty() {
+            return Ok(Vec::new());
         }
 
-        Ok(outcomes)
+        let deliver_after = DateTime::from_system_time(delay.not_before());
+        let documents: Vec<Document> = messages
+            .iter()
+            .map(|msg| {
+                let mut document = message_document(topic, msg);
+                document.insert("deliver_after", deliver_after);
+                document
+            })
+            .collect();
+
+        settle(messages, self.delayed.insert_many(documents).await.err())
+    }
+}
+
+/// Ack every message on success, or nack every message and return the error.
+fn settle(
+    messages: Vec<Message>,
+    failure: Option<mongodb::error::Error>,
+) -> Result<Vec<Outcome>, PublishError> {
+    match failure {
+        None => Ok(messages.into_iter().map(Message::ack).collect()),
+        Some(e) => {
+            for msg in messages {
+                let _ = msg.nack();
+            }
+            Err(PublishError::Backend(Box::new(e)))
+        }
     }
 }
 
