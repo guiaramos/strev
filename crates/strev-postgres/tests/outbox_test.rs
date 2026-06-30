@@ -153,3 +153,51 @@ async fn reports_consumer_lag() {
 
     assert_eq!(subscriber.lag(&topic).await.unwrap(), 0);
 }
+
+#[tokio::test]
+async fn retention_purges_fully_consumed_messages() {
+    use strev_postgres::{PostgresRetention, PostgresRetentionConfig};
+
+    let Some(pool) = pg_pool().await else {
+        return;
+    };
+    let topic = Topic::new(format!("retain-{}", Uuid::new_v4()));
+
+    let subscriber = PostgresSubscriber::new(PostgresSubscriberConfig::new(pool.clone(), "g"));
+    let mut stream = subscriber.subscribe(&topic).await.unwrap();
+
+    let publisher = PostgresPublisher::new(PostgresPublisherConfig::new(pool.clone()))
+        .await
+        .unwrap();
+    let messages = (0..5)
+        .map(|i| Message::new(Bytes::from(format!("m-{i}"))))
+        .collect();
+    publisher.publish(&topic, messages).await.unwrap();
+
+    for _ in 0..5 {
+        let msg = tokio::time::timeout(Duration::from_secs(3), stream.next())
+            .await
+            .expect("timeout")
+            .expect("stream ended");
+        let _ = msg.ack();
+    }
+    // Let the watermark advance over the acked prefix via a poll.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    let retention = PostgresRetention::new(PostgresRetentionConfig::new(pool.clone()))
+        .await
+        .unwrap();
+    let token = tokio_util::sync::CancellationToken::new();
+    let tc = token.clone();
+    let handle = tokio::spawn(async move { retention.run(tc).await });
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    token.cancel();
+    handle.await.unwrap();
+
+    let remaining: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM strev_messages WHERE topic = $1")
+        .bind(topic.as_str())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(remaining, 0, "fully-consumed messages should be purged");
+}
