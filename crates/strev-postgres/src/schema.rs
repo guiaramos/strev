@@ -19,6 +19,15 @@ const OFFSETS_DDL: &str = "CREATE TABLE IF NOT EXISTS strev_offsets (
     PRIMARY KEY (consumer_group, topic)
 )";
 
+const CONSUME_DDL: &str = "CREATE TABLE IF NOT EXISTS strev_consume (
+    consumer_group TEXT NOT NULL,
+    topic TEXT NOT NULL,
+    message_id BIGINT NOT NULL,
+    locked_until TIMESTAMPTZ NOT NULL,
+    acked BOOLEAN NOT NULL DEFAULT FALSE,
+    PRIMARY KEY (consumer_group, topic, message_id)
+)";
+
 const DELAYED_DDL: &str = "CREATE TABLE IF NOT EXISTS strev_delayed_messages (
     id BIGSERIAL PRIMARY KEY,
     topic TEXT NOT NULL,
@@ -41,6 +50,7 @@ pub(crate) async fn ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
     sqlx::query(MESSAGES_DDL).execute(&mut *tx).await?;
     sqlx::query(MESSAGES_INDEX_DDL).execute(&mut *tx).await?;
     sqlx::query(OFFSETS_DDL).execute(&mut *tx).await?;
+    sqlx::query(CONSUME_DDL).execute(&mut *tx).await?;
     sqlx::query(DELAYED_DDL).execute(&mut *tx).await?;
     sqlx::query(DELAYED_INDEX_DDL).execute(&mut *tx).await?;
     tx.commit().await?;
