@@ -159,6 +159,10 @@ async fn poll_once(
         }
     };
 
+    // Advance the watermark once per poll (under the offset lock) instead of on every ack,
+    // so the contiguous-acked scan stays off the high-throughput ack path.
+    let last_id = advance_watermark(&mut tx, &config.consumer_group, topic, last_id).await?;
+
     let visibility_ms = config.visibility_timeout.as_millis() as i64;
     let rows = sqlx::query(CLAIM_SQL)
         .bind(&config.consumer_group)
@@ -169,12 +173,11 @@ async fn poll_once(
         .fetch_all(&mut *tx)
         .await?;
 
+    tx.commit().await?;
+
     if rows.is_empty() {
-        tx.rollback().await?;
         return Ok(0);
     }
-
-    tx.commit().await?;
 
     let count = rows.len();
     for row in rows {
@@ -219,7 +222,7 @@ async fn resolve_ack(
 ) {
     match ack.recv().await {
         Disposition::Ack => {
-            let _ = commit_ack(&pool, &group, &topic, message_id).await;
+            let _ = mark_acked(&pool, &group, &topic, message_id).await;
         }
         Disposition::Nack => {
             expire_lease(&pool, &group, &topic, message_id).await;
@@ -227,37 +230,35 @@ async fn resolve_ack(
     }
 }
 
-/// Mark a message acked and, if it sits at the watermark head, advance the offset over the
-/// contiguous acked run and prune the compacted rows.
-async fn commit_ack(
+/// Mark a message acked. Cheap single-row update on the high-throughput ack path; the
+/// watermark advance and pruning happen once per poll in [`advance_watermark`].
+async fn mark_acked(
     pool: &PgPool,
     group: &str,
     topic: &str,
     message_id: i64,
 ) -> Result<(), sqlx::Error> {
-    let mut tx = pool.begin().await?;
-
-    let last_id: i64 = sqlx::query(
-        "SELECT last_id FROM strev_offsets WHERE consumer_group = $1 AND topic = $2 FOR UPDATE",
-    )
-    .bind(group)
-    .bind(topic)
-    .fetch_one(&mut *tx)
-    .await?
-    .try_get("last_id")?;
-
     sqlx::query(
         "UPDATE strev_consume SET acked = true WHERE consumer_group = $1 AND topic = $2 AND message_id = $3",
     )
     .bind(group)
     .bind(topic)
     .bind(message_id)
-    .execute(&mut *tx)
+    .execute(pool)
     .await?;
+    Ok(())
+}
 
-    // Advance the watermark over the contiguous acked prefix of this topic's messages.
-    // Message ids are a global sequence, so a topic's ids are not consecutive integers;
-    // walk the topic's actual message order rather than assuming id == last_id + 1.
+/// Advance the offset over the contiguous acked prefix of this topic's messages and prune
+/// the compacted consume rows. Message ids are a global sequence, so a topic's ids are not
+/// consecutive integers; walk the topic's actual message order. Runs under the offset lock
+/// held by the caller. Returns the new watermark.
+async fn advance_watermark(
+    conn: &mut sqlx::PgConnection,
+    group: &str,
+    topic: &str,
+    last_id: i64,
+) -> Result<i64, sqlx::Error> {
     let rows = sqlx::query(
         "SELECT m.id, (c.acked IS TRUE) AS acked
          FROM strev_messages m
@@ -271,7 +272,7 @@ async fn commit_ack(
     .bind(topic)
     .bind(last_id)
     .bind(ADVANCE_SCAN_LIMIT)
-    .fetch_all(&mut *tx)
+    .fetch_all(&mut *conn)
     .await?;
 
     let mut new_last = last_id;
@@ -292,7 +293,7 @@ async fn commit_ack(
         .bind(new_last)
         .bind(group)
         .bind(topic)
-        .execute(&mut *tx)
+        .execute(&mut *conn)
         .await?;
 
         sqlx::query(
@@ -301,11 +302,11 @@ async fn commit_ack(
         .bind(group)
         .bind(topic)
         .bind(new_last)
-        .execute(&mut *tx)
+        .execute(&mut *conn)
         .await?;
     }
 
-    tx.commit().await
+    Ok(new_last)
 }
 
 /// Expire the lease so the next poll re-claims the message (nack, shutdown, or timeout).

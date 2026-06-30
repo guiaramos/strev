@@ -57,8 +57,16 @@ impl strev::Publisher for AmqpPublisher {
             .await
             .map_err(|e| PublishError::Backend(Box::new(e)))?;
 
-        let mut outcomes = Vec::with_capacity(messages.len());
-        for msg in messages {
+        if messages.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Publish every message first, collecting the confirm futures, then await them all,
+        // so broker confirms pipeline instead of a round-trip per message.
+        let mut confirms = Vec::with_capacity(messages.len());
+        let mut failure: Option<Box<dyn std::error::Error + Send + Sync>> = None;
+
+        for msg in &messages {
             let mut headers = FieldTable::default();
             for (key, value) in msg.metadata().iter() {
                 headers.insert(key.into(), AMQPValue::LongString(value.into()));
@@ -72,7 +80,7 @@ impl strev::Publisher for AmqpPublisher {
                 .with_delivery_mode(2)
                 .with_headers(headers);
 
-            let result = self
+            match self
                 .channel
                 .basic_publish(
                     topic.as_str(),
@@ -81,26 +89,34 @@ impl strev::Publisher for AmqpPublisher {
                     msg.payload(),
                     properties,
                 )
-                .await;
-
-            let outcome = match result {
-                Ok(confirm) => confirm.await,
+                .await
+            {
+                Ok(confirm) => confirms.push(confirm),
                 Err(e) => {
-                    let _ = msg.nack();
-                    return Err(PublishError::Backend(Box::new(e)));
-                }
-            };
-
-            match outcome {
-                Ok(_) => outcomes.push(msg.ack()),
-                Err(e) => {
-                    let _ = msg.nack();
-                    return Err(PublishError::Backend(Box::new(e)));
+                    failure = Some(Box::new(e));
+                    break;
                 }
             }
         }
 
-        Ok(outcomes)
+        if failure.is_none() {
+            for confirm in confirms {
+                if let Err(e) = confirm.await {
+                    failure = Some(Box::new(e));
+                    break;
+                }
+            }
+        }
+
+        match failure {
+            None => Ok(messages.into_iter().map(Message::ack).collect()),
+            Some(e) => {
+                for msg in messages {
+                    let _ = msg.nack();
+                }
+                Err(PublishError::Backend(e))
+            }
+        }
     }
 
     async fn close(&mut self) -> Result<(), CloseError> {

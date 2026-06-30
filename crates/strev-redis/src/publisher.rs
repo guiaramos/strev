@@ -52,42 +52,38 @@ impl strev::Publisher for RedisPublisher {
         topic: &Topic,
         messages: Vec<Message>,
     ) -> Result<Vec<Outcome>, PublishError> {
+        if messages.is_empty() {
+            return Ok(Vec::new());
+        }
+
         let mut conn = self.conn.clone();
         let stream_key = topic.as_str();
-        let mut outcomes = Vec::with_capacity(messages.len());
 
-        for msg in messages {
-            let fields = self.marshaller.marshal(&msg);
-
-            let items: Vec<(&str, &[u8])> = fields
-                .iter()
-                .map(|(k, v)| (k.as_str(), v.as_slice()))
-                .collect();
-
-            let result: Result<String, _> = if let Some(maxlen) = self.max_stream_len {
-                redis::cmd("XADD")
-                    .arg(stream_key)
-                    .arg("MAXLEN")
-                    .arg("~")
-                    .arg(maxlen)
-                    .arg("*")
-                    .arg(&items)
-                    .query_async(&mut conn)
-                    .await
-            } else {
-                conn.xadd(stream_key, "*", &items).await
-            };
-
-            match result {
-                Ok(_) => outcomes.push(msg.ack()),
-                Err(e) => {
-                    let _ = msg.nack();
-                    return Err(PublishError::Backend(Box::new(e)));
-                }
+        // Pipeline every XADD into a single round-trip; arg() copies into the command buffer,
+        // so per-message field buffers can be dropped each iteration.
+        let mut pipe = redis::pipe();
+        for msg in &messages {
+            let fields = self.marshaller.marshal(msg);
+            let command = pipe.cmd("XADD").arg(stream_key);
+            if let Some(maxlen) = self.max_stream_len {
+                command.arg("MAXLEN").arg("~").arg(maxlen);
+            }
+            command.arg("*");
+            for (key, value) in &fields {
+                command.arg(key.as_str()).arg(value.as_slice());
             }
         }
 
-        Ok(outcomes)
+        let result: Result<Vec<redis::Value>, _> = pipe.query_async(&mut conn).await;
+        match result {
+            Ok(_) => Ok(messages.into_iter().map(Message::ack).collect()),
+            Err(e) => {
+                for msg in messages {
+                    let _ = msg.nack();
+                }
+                Err(PublishError::Backend(Box::new(e)))
+            }
+        }
     }
 
     async fn close(&mut self) -> Result<(), CloseError> {
