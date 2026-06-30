@@ -167,6 +167,14 @@ KafkaPublisherConfig::new("broker:9092")
     .option("sasl.password", "<secret>");
 ```
 
+Set the `strev_kafka::PARTITION_KEY` metadata to control partitioning: messages sharing a
+partition key land on the same partition and are delivered in order (e.g. all events for one
+aggregate). Without it, the message UUID is used, scattering messages across partitions.
+
+```rust
+message.metadata_mut().set(strev_kafka::PARTITION_KEY, "order-123");
+```
+
 ## Middleware
 
 Register middleware on the router with `add_middleware`; it wraps every handler in
