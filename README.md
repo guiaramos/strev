@@ -137,9 +137,11 @@ for the handler's verdict before settling it with the transport. Acking commits 
 support redelivery. The verdict is taken by the router before the middleware chain runs, so
 a handler's `ack`/`nack` never settles the transport mid-retry. Redelivery is available on
 `strev-channel`, `strev-redis` (pending-list plus `XAUTOCLAIM` crash recovery),
-`strev-nats`, `strev-amqp`, and `strev-postgres` (a per-row lease with a visibility timeout,
-so a nacked or timed-out message is re-claimed). `strev-mongodb` is currently at-least-once
-on delivery but does not yet redeliver on nack (change streams have no redelivery primitive).
+`strev-nats`, `strev-amqp`, `strev-postgres` (a per-row lease with a visibility timeout,
+so a nacked or timed-out message is re-claimed), and `strev-kafka` (serial per-partition with
+deferred commit; a nack seeks the partition back to replay the message). `strev-mongodb` is
+currently at-least-once on delivery but does not yet redeliver on nack (change streams have
+no redelivery primitive).
 
 ## Backends
 
@@ -148,7 +150,7 @@ on delivery but does not yet redeliver on nack (change streams have no redeliver
 | In-memory      | `strev-channel`    | single process, ideal for tests and local dev      |
 | Redis Streams  | `strev-redis`      | consumer groups, pluggable marshaller              |
 | NATS JetStream | `strev-nats`       | durable pull consumers, headers as metadata        |
-| Apache Kafka   | `strev-kafka`      | consumer groups, manual offset commits             |
+| Apache Kafka   | `strev-kafka`      | consumer groups, deferred commit, seek-based redelivery |
 | PostgreSQL     | `strev-postgres`   | durable table, per-row leases with redelivery, pure Rust (sqlx) |
 | MongoDB        | `strev-mongodb`    | change streams, resume tokens (needs replica set)  |
 | AMQP (RabbitMQ)| `strev-amqp`       | durable fanout exchange, a durable queue per group |

@@ -2,11 +2,11 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use rdkafka::ClientConfig;
 use rdkafka::Message as KafkaMessage;
 use rdkafka::consumer::{CommitMode, Consumer, StreamConsumer};
 use rdkafka::message::Headers;
-use strev::{CloseError, Message, MessageStream, Metadata, SubscribeError, Topic};
+use rdkafka::{ClientConfig, Offset, TopicPartitionList};
+use strev::{CloseError, Disposition, Message, MessageStream, Metadata, SubscribeError, Topic};
 
 pub struct KafkaSubscriberConfig {
     pub brokers: String,
@@ -96,12 +96,34 @@ impl strev::Subscriber for KafkaSubscriber {
                             }
                         }
 
-                        let _ = consumer.commit_message(&borrowed, CommitMode::Async);
+                        let msg_topic = borrowed.topic().to_string();
+                        let partition = borrowed.partition();
+                        let offset = borrowed.offset();
                         drop(borrowed);
 
-                        let msg = Message::with_metadata(payload, metadata);
+                        let (msg, ack) = Message::with_metadata(payload, metadata).leased();
                         if tx.send(msg).await.is_err() {
                             break;
+                        }
+
+                        match ack.recv().await {
+                            Disposition::Ack => {
+                                let mut tpl = TopicPartitionList::new();
+                                let _ = tpl.add_partition_offset(
+                                    &msg_topic,
+                                    partition,
+                                    Offset::Offset(offset + 1),
+                                );
+                                let _ = consumer.commit(&tpl, CommitMode::Async);
+                            }
+                            Disposition::Nack => {
+                                let _ = consumer.seek(
+                                    &msg_topic,
+                                    partition,
+                                    Offset::Offset(offset),
+                                    Duration::from_secs(5),
+                                );
+                            }
                         }
                     }
                     Err(_) => {
