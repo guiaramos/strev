@@ -18,8 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - *(strev)* add real-world examples for middleware patterns
-- *(strev)* port remaining watermill features
-- *(strev)* add examples mirroring watermill patterns
+- *(strev)* port remaining components
+- *(strev)* add runnable examples for all components
 - *(strev)* add built-in middleware (Retry, Timeout, CorrelationId, Throttle, PoisonQueue)
 - *(strev)* add Router with middleware chain and graceful shutdown
 - *(strev)* add Middleware trait
@@ -55,8 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - *(strev)* add real-world examples for middleware patterns
-- *(strev)* port remaining watermill features
-- *(strev)* add examples mirroring watermill patterns
+- *(strev)* port remaining components
+- *(strev)* add runnable examples for all components
 - *(strev)* add built-in middleware (Retry, Timeout, CorrelationId, Throttle, PoisonQueue)
 - *(strev)* add Router with middleware chain and graceful shutdown
 - *(strev)* add Middleware trait
@@ -90,8 +90,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - *(strev)* add real-world examples for middleware patterns
-- *(strev)* port remaining watermill features
-- *(strev)* add examples mirroring watermill patterns
+- *(strev)* port remaining components
+- *(strev)* add runnable examples for all components
 - *(strev)* add built-in middleware (Retry, Timeout, CorrelationId, Throttle, PoisonQueue)
 - *(strev)* add Router with middleware chain and graceful shutdown
 - *(strev)* add Middleware trait
@@ -123,8 +123,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - *(strev)* add real-world examples for middleware patterns
-- *(strev)* port remaining watermill features
-- *(strev)* add examples mirroring watermill patterns
+- *(strev)* port remaining components
+- *(strev)* add runnable examples for all components
 - *(strev)* add built-in middleware (Retry, Timeout, CorrelationId, Throttle, PoisonQueue)
 - *(strev)* add Router with middleware chain and graceful shutdown
 - *(strev)* add Middleware trait

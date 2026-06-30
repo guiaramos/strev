@@ -3,7 +3,10 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use redis::AsyncCommands;
-use strev::{AckReceiver, CloseError, Disposition, Message, MessageStream, SubscribeError, Topic};
+use strev::{
+    AckReceiver, CloseError, ConsumerLag, Disposition, LagError, Message, MessageStream,
+    SubscribeError, Topic,
+};
 
 use crate::marshaller::{DefaultMarshaller, Marshaller};
 
@@ -157,6 +160,74 @@ impl strev::Subscriber for RedisSubscriber {
     async fn close(&mut self) -> Result<(), CloseError> {
         Ok(())
     }
+}
+
+#[async_trait]
+impl ConsumerLag for RedisSubscriber {
+    async fn lag(&self, topic: &Topic) -> Result<u64, LagError> {
+        let mut conn = self
+            .config
+            .client
+            .get_multiplexed_async_connection()
+            .await?;
+
+        let groups: redis::Value = match redis::cmd("XINFO")
+            .arg("GROUPS")
+            .arg(topic.as_str())
+            .query_async(&mut conn)
+            .await
+        {
+            Ok(value) => value,
+            Err(_) => return Ok(0),
+        };
+
+        Ok(group_lag(&groups, &self.config.consumer_group))
+    }
+}
+
+fn value_to_text(value: &redis::Value) -> Option<String> {
+    match value {
+        redis::Value::BulkString(bytes) => String::from_utf8(bytes.clone()).ok(),
+        redis::Value::SimpleString(text) => Some(text.clone()),
+        _ => None,
+    }
+}
+
+fn value_to_i64(value: &redis::Value) -> Option<i64> {
+    match value {
+        redis::Value::Int(n) => Some(*n),
+        other => value_to_text(other).and_then(|s| s.parse().ok()),
+    }
+}
+
+fn group_lag(value: &redis::Value, group: &str) -> u64 {
+    let redis::Value::Array(entries) = value else {
+        return 0;
+    };
+
+    for entry in entries {
+        let redis::Value::Array(fields) = entry else {
+            continue;
+        };
+
+        let mut name = None;
+        let mut lag = None;
+        let mut i = 0;
+        while i + 1 < fields.len() {
+            match value_to_text(&fields[i]).as_deref() {
+                Some("name") => name = value_to_text(&fields[i + 1]),
+                Some("lag") => lag = value_to_i64(&fields[i + 1]),
+                _ => {}
+            }
+            i += 2;
+        }
+
+        if name.as_deref() == Some(group) {
+            return lag.unwrap_or(0).max(0) as u64;
+        }
+    }
+
+    0
 }
 
 async fn ensure_consumer_group(

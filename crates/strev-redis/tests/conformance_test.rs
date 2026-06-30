@@ -152,3 +152,35 @@ async fn conformance_competing_consumers() {
     };
     strev_testsuite::competing_consumers(&backend).await;
 }
+
+#[tokio::test]
+async fn reports_consumer_lag() {
+    use bytes::Bytes;
+    use strev::{ConsumerLag, Message, Publisher, Subscriber, Topic};
+    use strev_redis::{
+        RedisPublisher, RedisPublisherConfig, RedisSubscriber, RedisSubscriberConfig,
+    };
+    use uuid::Uuid;
+
+    let Some(client) = redis_client().await else {
+        return;
+    };
+    let topic = Topic::new(format!("lag-{}", Uuid::new_v4()));
+
+    let subscriber = RedisSubscriber::new(RedisSubscriberConfig::new(client.clone(), "g"));
+    let _stream = Subscriber::subscribe(&subscriber, &topic).await.unwrap();
+
+    let publisher = RedisPublisher::new(RedisPublisherConfig::new(client.clone()))
+        .await
+        .unwrap();
+    let messages = (0..5)
+        .map(|i| Message::new(Bytes::from(format!("m-{i}"))))
+        .collect();
+    Publisher::publish(&publisher, &topic, messages)
+        .await
+        .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    let lag = subscriber.lag(&topic).await.unwrap();
+    assert!(lag <= 5, "lag {lag} should be bounded by published count");
+}

@@ -6,7 +6,8 @@ use bytes::Bytes;
 use serde_json::Value;
 use sqlx::{PgPool, Row};
 use strev::{
-    AckReceiver, CloseError, Disposition, Message, MessageStream, Metadata, SubscribeError, Topic,
+    AckReceiver, CloseError, ConsumerLag, Disposition, LagError, Message, MessageStream, Metadata,
+    SubscribeError, Topic,
 };
 use tokio::sync::mpsc::Sender;
 
@@ -85,6 +86,23 @@ impl strev::Subscriber for PostgresSubscriber {
 
     async fn close(&mut self) -> Result<(), CloseError> {
         Ok(())
+    }
+}
+
+#[async_trait]
+impl ConsumerLag for PostgresSubscriber {
+    async fn lag(&self, topic: &Topic) -> Result<u64, LagError> {
+        let lag: i64 = sqlx::query(
+            "SELECT COALESCE((SELECT MAX(id) FROM strev_messages WHERE topic = $1), 0)
+                  - COALESCE((SELECT last_id FROM strev_offsets WHERE consumer_group = $2 AND topic = $1), 0) AS lag",
+        )
+        .bind(topic.as_str())
+        .bind(&self.config.consumer_group)
+        .fetch_one(&self.config.pool)
+        .await?
+        .try_get("lag")?;
+
+        Ok(lag.max(0) as u64)
     }
 }
 
