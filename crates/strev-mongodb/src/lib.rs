@@ -6,10 +6,12 @@
 //! restart. Change streams require the server to run as a replica set.
 mod delay;
 mod publisher;
+mod queue_subscriber;
 mod subscriber;
 
 pub use delay::{MongoDelayPromoter, MongoDelayPromoterConfig};
 pub use publisher::{MongoPublisher, MongoPublisherConfig};
+pub use queue_subscriber::{MongoQueueSubscriber, MongoQueueSubscriberConfig};
 pub use subscriber::{MongoSubscriber, MongoSubscriberConfig};
 
 const MESSAGES_COLLECTION: &str = "strev_messages";
