@@ -143,3 +143,12 @@ async fn conformance_nack_redelivery() {
     };
     strev_testsuite::nack_redelivery(&backend).await;
 }
+
+#[tokio::test]
+async fn conformance_competing_consumers() {
+    let Some(backend) = backend().await else {
+        eprintln!("skipping: redis not available");
+        return;
+    };
+    strev_testsuite::competing_consumers(&backend).await;
+}
