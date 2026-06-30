@@ -93,8 +93,13 @@ impl strev::Subscriber for PostgresSubscriber {
 impl ConsumerLag for PostgresSubscriber {
     async fn lag(&self, topic: &Topic) -> Result<u64, LagError> {
         let lag: i64 = sqlx::query(
-            "SELECT COALESCE((SELECT MAX(id) FROM strev_messages WHERE topic = $1), 0)
-                  - COALESCE((SELECT last_id FROM strev_offsets WHERE consumer_group = $2 AND topic = $1), 0) AS lag",
+            "SELECT COUNT(*) AS lag
+             FROM strev_messages m
+             LEFT JOIN strev_consume c
+                ON c.consumer_group = $2 AND c.topic = $1 AND c.message_id = m.id
+             WHERE m.topic = $1
+               AND m.id > COALESCE((SELECT last_id FROM strev_offsets WHERE consumer_group = $2 AND topic = $1), 0)
+               AND (c.message_id IS NULL OR NOT c.acked)",
         )
         .bind(topic.as_str())
         .bind(&self.config.consumer_group)
@@ -105,6 +110,8 @@ impl ConsumerLag for PostgresSubscriber {
         Ok(lag.max(0) as u64)
     }
 }
+
+const ADVANCE_SCAN_LIMIT: i64 = 1000;
 
 const CLAIM_SQL: &str = "WITH claimable AS (
     SELECT m.id, m.payload, m.metadata
@@ -248,47 +255,54 @@ async fn commit_ack(
     .execute(&mut *tx)
     .await?;
 
-    if message_id == last_id + 1 {
-        let acked_ids: Vec<i64> = sqlx::query(
-            "SELECT message_id FROM strev_consume WHERE consumer_group = $1 AND topic = $2 AND message_id > $3 AND acked ORDER BY message_id ASC",
+    // Advance the watermark over the contiguous acked prefix of this topic's messages.
+    // Message ids are a global sequence, so a topic's ids are not consecutive integers;
+    // walk the topic's actual message order rather than assuming id == last_id + 1.
+    let rows = sqlx::query(
+        "SELECT m.id, (c.acked IS TRUE) AS acked
+         FROM strev_messages m
+         LEFT JOIN strev_consume c
+            ON c.consumer_group = $1 AND c.topic = $2 AND c.message_id = m.id
+         WHERE m.topic = $2 AND m.id > $3
+         ORDER BY m.id ASC
+         LIMIT $4",
+    )
+    .bind(group)
+    .bind(topic)
+    .bind(last_id)
+    .bind(ADVANCE_SCAN_LIMIT)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    let mut new_last = last_id;
+    for row in rows {
+        let id: i64 = row.try_get("id")?;
+        let acked: bool = row.try_get("acked")?;
+        if acked {
+            new_last = id;
+        } else {
+            break;
+        }
+    }
+
+    if new_last > last_id {
+        sqlx::query(
+            "UPDATE strev_offsets SET last_id = $1 WHERE consumer_group = $2 AND topic = $3",
+        )
+        .bind(new_last)
+        .bind(group)
+        .bind(topic)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            "DELETE FROM strev_consume WHERE consumer_group = $1 AND topic = $2 AND message_id <= $3",
         )
         .bind(group)
         .bind(topic)
-        .bind(last_id)
-        .fetch_all(&mut *tx)
-        .await?
-        .into_iter()
-        .map(|row| row.try_get("message_id"))
-        .collect::<Result<_, _>>()?;
-
-        let mut new_last = last_id;
-        for id in acked_ids {
-            if id == new_last + 1 {
-                new_last = id;
-            } else {
-                break;
-            }
-        }
-
-        if new_last > last_id {
-            sqlx::query(
-                "UPDATE strev_offsets SET last_id = $1 WHERE consumer_group = $2 AND topic = $3",
-            )
-            .bind(new_last)
-            .bind(group)
-            .bind(topic)
-            .execute(&mut *tx)
-            .await?;
-
-            sqlx::query(
-                "DELETE FROM strev_consume WHERE consumer_group = $1 AND topic = $2 AND message_id <= $3",
-            )
-            .bind(group)
-            .bind(topic)
-            .bind(new_last)
-            .execute(&mut *tx)
-            .await?;
-        }
+        .bind(new_last)
+        .execute(&mut *tx)
+        .await?;
     }
 
     tx.commit().await
