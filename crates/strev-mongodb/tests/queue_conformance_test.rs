@@ -120,3 +120,12 @@ async fn reports_consumer_lag() {
 
     assert_eq!(subscriber.lag(&topic).await.unwrap(), 5);
 }
+
+#[tokio::test]
+async fn conformance_throughput() {
+    let Some(backend) = backend().await else {
+        eprintln!("skipping: backend not available");
+        return;
+    };
+    strev_testsuite::throughput(&backend).await;
+}

@@ -193,3 +193,12 @@ async fn reports_consumer_lag() {
     let lag = subscriber.lag(&topic).await.unwrap();
     assert!(lag <= 5, "lag {lag} should be bounded by published count");
 }
+
+#[tokio::test]
+async fn conformance_throughput() {
+    let Some(backend) = backend().await else {
+        eprintln!("skipping: backend not available");
+        return;
+    };
+    strev_testsuite::throughput(&backend).await;
+}
