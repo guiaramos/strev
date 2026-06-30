@@ -17,6 +17,11 @@ tracing = "0.1"
 [dev-dependencies]
 async-trait = "0.1"
 bytes = "1"
+criterion = { version = "0.5", features = ["async_tokio"] }
 strev-testsuite = { path = "../strev-testsuite" }
 tokio = { version = "1", features = ["full", "test-util"] }
 tokio-stream = "0.1"
+
+[[bench]]
+name = "throughput"
+harness = false

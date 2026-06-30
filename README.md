@@ -349,6 +349,13 @@ Format and lint:
 make check          # fmt check + clippy + unit tests
 ```
 
+Benchmarks (criterion) cover the in-memory hot path - message lifecycle, round-trip latency,
+and batch throughput:
+
+```bash
+cargo bench -p strev-channel
+```
+
 ### Git hooks
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org), which the
