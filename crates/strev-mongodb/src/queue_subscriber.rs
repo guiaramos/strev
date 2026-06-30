@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use async_trait::async_trait;
+use futures::TryStreamExt;
 use mongodb::Client;
 use mongodb::IndexModel;
 use mongodb::bson::oid::ObjectId;
@@ -14,6 +15,14 @@ use strev::{
 
 use crate::subscriber::document_to_message;
 use crate::{DEFAULT_DATABASE, MESSAGES_COLLECTION};
+
+const CURSORS_COLLECTION: &str = "strev_cursors";
+const ADVANCE_SCAN_LIMIT: i64 = 1000;
+
+/// The smallest ObjectId, used as the initial cursor (deliver from the very beginning).
+fn min_object_id() -> ObjectId {
+    ObjectId::from_bytes([0u8; 12])
+}
 
 /// Configuration for a [`MongoQueueSubscriber`].
 pub struct MongoQueueSubscriberConfig {
@@ -88,6 +97,11 @@ impl strev::Subscriber for MongoQueueSubscriber {
             .await
             .map_err(|e| SubscribeError::Backend(Box::new(e)))?;
 
+        let cursors: mongodb::Collection<Document> = config
+            .client
+            .database(&config.database)
+            .collection(CURSORS_COLLECTION);
+
         let (sender, stream) = MessageStream::channel(config.buffer_size);
         let key = group_key(&config.consumer_group);
 
@@ -97,14 +111,26 @@ impl strev::Subscriber for MongoQueueSubscriber {
                     break;
                 }
 
+                // Advance the cursor over the acked prefix so the claim starts past consumed
+                // messages (index range scan on (topic, _id)) instead of rescanning them.
+                let cursor = advance_cursor(&collection, &cursors, &key, &topic)
+                    .await
+                    .unwrap_or_else(|_| min_object_id());
+
                 let mut delivered = 0;
                 for _ in 0..config.batch_size {
-                    let claimed =
-                        match claim_one(&collection, &topic, &key, config.visibility_timeout).await
-                        {
-                            Ok(Some(doc)) => doc,
-                            _ => break,
-                        };
+                    let claimed = match claim_one(
+                        &collection,
+                        &topic,
+                        &key,
+                        cursor,
+                        config.visibility_timeout,
+                    )
+                    .await
+                    {
+                        Ok(Some(doc)) => doc,
+                        _ => break,
+                    };
 
                     let Ok(id) = claimed.get_object_id("_id") else {
                         continue;
@@ -143,9 +169,17 @@ impl ConsumerLag for MongoQueueSubscriber {
             .database(&self.config.database)
             .collection(MESSAGES_COLLECTION);
         let key = group_key(&self.config.consumer_group);
+        let cursors: mongodb::Collection<Document> = self
+            .config
+            .client
+            .database(&self.config.database)
+            .collection(CURSORS_COLLECTION);
+        let cursor = read_cursor(&cursors, &key, topic.as_str()).await?;
 
+        // Everything at or below the cursor is acked, so count only the unconsumed window.
         let filter = doc! {
             "topic": topic.as_str(),
+            "_id": { "$gt": cursor },
             "$or": [
                 { format!("consumed.{key}"): { "$exists": false } },
                 { format!("consumed.{key}.acked"): false },
@@ -156,10 +190,75 @@ impl ConsumerLag for MongoQueueSubscriber {
     }
 }
 
+fn cursor_id(key: &str, topic: &str) -> String {
+    format!("{key}:{topic}")
+}
+
+async fn read_cursor(
+    cursors: &mongodb::Collection<Document>,
+    key: &str,
+    topic: &str,
+) -> Result<ObjectId, mongodb::error::Error> {
+    let doc = cursors
+        .find_one(doc! { "_id": cursor_id(key, topic) })
+        .await?;
+    Ok(doc
+        .and_then(|d| d.get_object_id("cursor").ok())
+        .unwrap_or_else(min_object_id))
+}
+
+/// Advance the per-group cursor over the contiguous acked prefix of the topic's messages, so
+/// subsequent claims skip consumed documents. Returns the current cursor.
+async fn advance_cursor(
+    messages: &mongodb::Collection<Document>,
+    cursors: &mongodb::Collection<Document>,
+    key: &str,
+    topic: &str,
+) -> Result<ObjectId, mongodb::error::Error> {
+    let current = read_cursor(cursors, key, topic).await?;
+
+    let mut stream = messages
+        .find(doc! { "topic": topic, "_id": { "$gt": current } })
+        .sort(doc! { "_id": 1 })
+        .limit(ADVANCE_SCAN_LIMIT)
+        .await?;
+
+    let mut new_cursor = current;
+    while let Some(doc) = stream.try_next().await? {
+        let Ok(id) = doc.get_object_id("_id") else {
+            break;
+        };
+        let acked = doc
+            .get_document("consumed")
+            .ok()
+            .and_then(|c| c.get_document(key).ok())
+            .and_then(|g| g.get_bool("acked").ok())
+            .unwrap_or(false);
+        if acked {
+            new_cursor = id;
+        } else {
+            break;
+        }
+    }
+
+    if new_cursor != current {
+        cursors
+            .update_one(
+                doc! { "_id": cursor_id(key, topic) },
+                doc! { "$set": { "cursor": new_cursor } },
+            )
+            .upsert(true)
+            .await?;
+    }
+
+    Ok(new_cursor)
+}
+
 async fn claim_one(
     collection: &mongodb::Collection<Document>,
     topic: &str,
     key: &str,
+    cursor: ObjectId,
     visibility: Duration,
 ) -> Result<Option<Document>, mongodb::error::Error> {
     let now = DateTime::now();
@@ -169,6 +268,7 @@ async fn claim_one(
 
     let filter = doc! {
         "topic": topic,
+        "_id": { "$gt": cursor },
         "$or": [
             { format!("consumed.{key}"): { "$exists": false } },
             { &acked_field: false, &locked_field: { "$lt": now } },
