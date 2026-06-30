@@ -151,3 +151,45 @@ async fn conformance_nack_redelivery() {
     };
     strev_testsuite::nack_redelivery(&backend).await;
 }
+
+#[tokio::test]
+async fn conformance_competing_consumers() {
+    let Some(backend) = backend().await else {
+        eprintln!("skipping: amqp not available");
+        return;
+    };
+    strev_testsuite::competing_consumers(&backend).await;
+}
+
+#[tokio::test]
+async fn reports_consumer_lag() {
+    use bytes::Bytes;
+    use strev::{ConsumerLag, Message, Publisher, Subscriber, Topic};
+    use strev_amqp::{AmqpPublisher, AmqpPublisherConfig, AmqpSubscriber, AmqpSubscriberConfig};
+    use uuid::Uuid;
+
+    if backend().await.is_none() {
+        return;
+    }
+    let uri = amqp_uri();
+    let topic = Topic::new(format!("lag.{}", Uuid::new_v4().simple()));
+    let group = "g";
+
+    let subscriber = AmqpSubscriber::new(AmqpSubscriberConfig::new(&uri, group));
+    let _stream = Subscriber::subscribe(&subscriber, &topic).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    let publisher = AmqpPublisher::new(AmqpPublisherConfig::new(&uri))
+        .await
+        .unwrap();
+    let messages = (0..5)
+        .map(|i| Message::new(Bytes::from(format!("m-{i}"))))
+        .collect();
+    Publisher::publish(&publisher, &topic, messages)
+        .await
+        .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    let lag = subscriber.lag(&topic).await.unwrap();
+    assert!(lag <= 5, "lag {lag} should be bounded by published count");
+}

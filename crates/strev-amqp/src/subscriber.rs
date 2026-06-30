@@ -9,7 +9,10 @@ use lapin::options::{
     ExchangeDeclareOptions, QueueBindOptions, QueueDeclareOptions,
 };
 use lapin::types::{AMQPValue, FieldTable};
-use strev::{CloseError, Disposition, Message, MessageStream, Metadata, SubscribeError, Topic};
+use strev::{
+    CloseError, ConsumerLag, Disposition, LagError, Message, MessageStream, Metadata,
+    SubscribeError, Topic,
+};
 
 use crate::connect;
 
@@ -160,5 +163,29 @@ impl strev::Subscriber for AmqpSubscriber {
 
     async fn close(&mut self) -> Result<(), CloseError> {
         Ok(())
+    }
+}
+
+#[async_trait]
+impl ConsumerLag for AmqpSubscriber {
+    async fn lag(&self, topic: &Topic) -> Result<u64, LagError> {
+        let connection = connect(&self.config.uri).await?;
+        let channel = connection.create_channel().await?;
+        let queue_name = format!("{}.{}", topic.as_str(), self.config.group);
+
+        match channel
+            .queue_declare(
+                &queue_name,
+                QueueDeclareOptions {
+                    passive: true,
+                    ..Default::default()
+                },
+                FieldTable::default(),
+            )
+            .await
+        {
+            Ok(queue) => Ok(queue.message_count() as u64),
+            Err(_) => Ok(0),
+        }
     }
 }

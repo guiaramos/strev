@@ -144,3 +144,36 @@ async fn conformance_nack_redelivery() {
     };
     strev_testsuite::nack_redelivery(&backend).await;
 }
+
+#[tokio::test]
+async fn reports_consumer_lag() {
+    use std::time::Duration;
+
+    use bytes::Bytes;
+    use strev::{ConsumerLag, Message, Publisher, Subscriber, Topic};
+    use uuid::Uuid;
+
+    let Some(client) = nats_client().await else {
+        eprintln!("skipping: nats not available");
+        return;
+    };
+    let topic = Topic::new(format!("conformance.lag-{}", Uuid::new_v4().simple()));
+
+    let subscriber = NatsSubscriber::new(NatsSubscriberConfig::new(client.clone(), STREAM));
+    let _held = subscriber.subscribe(&topic).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    let publisher = NatsPublisher::new(NatsPublisherConfig::new(client.clone(), STREAM))
+        .await
+        .unwrap();
+    let messages = (0..5)
+        .map(|i| Message::new(Bytes::from(format!("m-{i}"))))
+        .collect();
+    Publisher::publish(&publisher, &topic, messages)
+        .await
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    let lag = subscriber.lag(&topic).await.unwrap();
+    assert!((1..=5).contains(&lag), "unexpected lag: {lag}");
+}
